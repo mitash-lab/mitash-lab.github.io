@@ -105,11 +105,34 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--surface-2)}
 .tabs{display:flex;gap:6px;flex-wrap:wrap}
 .tab{min-height:36px;padding:0 14px;border-radius:18px;border:1px solid var(--line);background:var(--surface);cursor:pointer}
 .tab[aria-selected="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+/* Celular: barra de solapas abajo; el menú completo se abre con "Más". Las tablas se ven como tarjetas. */
+nav.bottom{display:none}
 @media (max-width:760px){
   .app{flex-direction:column}
-  nav.side{width:auto;height:auto;position:static;flex-direction:row;overflow-x:auto;padding:12px 16px;gap:4px;align-items:center}
-  .brand{padding:0 12px 0 0;font-size:20px} .brand small,.navgroup{display:none}
-  .navbtn{width:auto;white-space:nowrap} .navbtn .soon{display:none}
+  nav.side{display:none}
+  nav.side.abierto{display:flex;position:fixed;inset:0;z-index:25;width:100%;height:100%;overflow-y:auto;padding:20px 16px calc(90px + env(safe-area-inset-bottom,0px))}
+  nav.side.abierto .navbtn{font-size:16px;min-height:46px}
+  main{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+  nav.bottom{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px));box-shadow:0 -4px 16px rgba(0,0,0,.05)}
+  nav.bottom button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:0;color:var(--muted);font-size:11px;padding:6px 0;min-height:52px;cursor:pointer}
+  nav.bottom button .i{font-size:22px;line-height:1}
+  nav.bottom button[aria-current="page"]{color:var(--accent);font-weight:600}
+  .head h1{font-size:26px}
+  .head .btn{flex:1 1 auto;justify-content:center}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .kpi{padding:12px 14px} .kpi .v{font-size:24px}
+  .tablewrap{border:0;background:none;overflow:visible}
+  .tablewrap table,details table,.card table{min-width:0!important}
+  .tablewrap table,.tablewrap tbody,.tablewrap tr,.tablewrap td,details table,details tbody,details tr,details td{display:block;width:100%}
+  .tablewrap thead,details thead{display:none}
+  .tablewrap tr,details tbody tr{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+  .tablewrap td,details td{border:0;padding:3px 0;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;word-break:break-word}
+  .tablewrap td:empty,details td:empty{display:none}
+  .tablewrap td::before,details td::before{content:attr(data-label);flex:0 0 38%;font-size:12px;color:var(--muted)}
+  .tablewrap td[data-label=""]::before,details td[data-label=""]::before{display:none}
+  .tabs{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
+  .tab{white-space:nowrap}
+  .grid2{gap:12px}
 }
 .userbox{margin-top:auto;padding:16px 10px 0;border-top:1px solid var(--line);font-size:12px;color:var(--nav-muted);display:flex;flex-direction:column;gap:6px;overflow-wrap:anywhere}
 .userbox .navbtn{padding:6px 0;min-height:32px;color:var(--nav-muted)}
@@ -125,6 +148,7 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--surface-2)}
 <div class="app">
   <nav class="side" aria-label="Secciones">
     <div class="brand">Mitash<small>Gestión de metrología</small></div>
+    <button class="navbtn" data-view="inicio">🏠 Inicio</button>
     <button class="navbtn" data-view="buscar">🔎 Buscar equipo</button>
     <button class="navbtn" data-view="agenda">Agenda y recordatorios</button>
     <button class="navbtn" data-view="tareas">Tareas pendientes</button>
@@ -155,14 +179,21 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--surface-2)}
     <button class="navbtn" data-view="bitacora">Bitácora del sistema</button>
     <div class="userbox" id="userbox" hidden><span id="useremail"></span><button class="navbtn" id="logout">Cerrar sesión</button></div>
   </nav>
-  <main id="main"><p class="empty">Cargando… (v4)</p></main>
+  <main id="main"><p class="empty">Cargando… (v5)</p></main>
 </div>
+<nav class="bottom" aria-label="Solapas">
+  <button data-tab="inicio"><span class="i">🏠</span>Inicio</button>
+  <button data-tab="pendientes"><span class="i">📅</span>Para hacer</button>
+  <button data-tab="ingresos"><span class="i">🔧</span>Taller</button>
+  <button data-tab="buscar"><span class="i">🔎</span>Buscar</button>
+  <button data-tab="mas"><span class="i">☰</span>Más</button>
+</nav>
 <div id="overlay"></div>
 
 <script>
 // Si algo falla, mostrarlo en pantalla (para poder mandar captura) en vez de quedar en "Cargando…"
-window.addEventListener('error',e=>{ const m=document.getElementById('main'); if(m) m.innerHTML='<div class="banner">Error: '+String(e.message||e).replace(/</g,'&lt;')+' (v4)</div>'; });
-window.addEventListener('unhandledrejection',e=>{ const m=document.getElementById('main'); if(m) m.innerHTML='<div class="banner">Error: '+String((e.reason&&e.reason.message)||e.reason).replace(/</g,'&lt;')+' (v4)</div>'; });
+window.addEventListener('error',e=>{ const m=document.getElementById('main'); if(m) m.innerHTML='<div class="banner">Error: '+String(e.message||e).replace(/</g,'&lt;')+' (v5)</div>'; });
+window.addEventListener('unhandledrejection',e=>{ const m=document.getElementById('main'); if(m) m.innerHTML='<div class="banner">Error: '+String((e.reason&&e.reason.message)||e.reason).replace(/</g,'&lt;')+' (v5)</div>'; });
 </script>
 <script>
 // (los avisos de error van en el <script> de arriba, aparte: así también se ven los errores de sintaxis de este)
@@ -170,7 +201,7 @@ window.addEventListener('unhandledrejection',e=>{ const m=document.getElementByI
 const HOY = new Date(); HOY.setHours(0,0,0,0);
 const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const MES3=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-const S={base:[],trab:[],term:[],prest:{},vis:{},ent:{},rec:{},tar:{},ing:{},pag:{},avp:{},evt:{},ft:{q:'',area:'',anio:'',cliente:''},over:{},clientes:{},view:'agenda',db:null,f:{q:'',anio:'',cliente:'',res:'',fac:''},page:0,calTab:'prox',pcAnio:String(new Date().getFullYear()),stAnio:String(new Date().getFullYear())};
+const S={base:[],trab:[],term:[],prest:{},vis:{},ent:{},rec:{},tar:{},ing:{},pag:{},avp:{},evt:{},ft:{q:'',area:'',anio:'',cliente:''},over:{},clientes:{},view:'inicio',db:null,f:{q:'',anio:'',cliente:'',res:'',fac:''},page:0,calTab:'prox',pcAnio:String(new Date().getFullYear()),stAnio:String(new Date().getFullYear())};
 try{ const v=localStorage.getItem('mitash.view'); if(v) S.view=v; }catch(e){}
 const $=s=>document.querySelector(s);
 const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -213,7 +244,17 @@ function estChip(p){ return {vencida:'<span class="chip bad">Vencida</span>',pro
 
 function setView(v){ if(v.startsWith('area:')){ S.ft={q:'',area:v.slice(5),anio:'',cliente:''}; } else if(v==='trabajos'){ S.ft.area=''; }
   S.view=v; S.page=0; try{localStorage.setItem('mitash.view',v);}catch(e){} render(); window.scrollTo(0,0); }
-document.querySelectorAll('.navbtn[data-view]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
+document.querySelectorAll('.navbtn[data-view]').forEach(b=>b.addEventListener('click',()=>{ $('nav.side').classList.remove('abierto'); setView(b.dataset.view); }));
+// Solapas de abajo (celular). "Más" abre el menú completo.
+document.querySelectorAll('nav.bottom [data-tab]').forEach(b=>b.addEventListener('click',()=>{
+  const t=b.dataset.tab, side=$('nav.side');
+  if(t==='mas'){ side.classList.toggle('abierto'); marcarSolapa(); return; }
+  side.classList.remove('abierto'); setView(t); }));
+function marcarSolapa(){ const abierto=$('nav.side').classList.contains('abierto'), prim=['inicio','pendientes','ingresos','buscar'];
+  document.querySelectorAll('nav.bottom [data-tab]').forEach(b=>{ const on=abierto?b.dataset.tab==='mas':(b.dataset.tab===S.view||(b.dataset.tab==='mas'&&!prim.includes(S.view))); on?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current'); }); }
+// En el celular las tablas se ven como tarjetas: cada celda lleva el nombre de su columna.
+function etiquetarTablas(root){ root.querySelectorAll('table').forEach(t=>{ const hs=[...t.querySelectorAll('thead th')].map(th=>th.textContent.trim());
+  t.querySelectorAll('tbody tr').forEach(tr=>[...tr.children].forEach((td,i)=>{ if(td.tagName==='TD'&&!td.hasAttribute('colspan')) td.setAttribute('data-label',hs[i]||''); })); }); }
 
 function render(){
   document.querySelectorAll('.navbtn').forEach(b=>b.toggleAttribute('aria-current',b.dataset.view===S.view)); document.querySelectorAll('.navbtn[aria-current]').forEach(b=>b.setAttribute('aria-current','page'));
@@ -221,6 +262,7 @@ function render(){
   const v=S.view, M=$('#main');
   const warn = S.db===null && S.dbChecked ? '<div class="banner">En esta vista los cambios no se guardan (la base compartida no está disponible). Podés consultar todo igual.</div>' : '';
   if(v==='agenda') M.innerHTML=warn+vAgenda();
+  else if(v==='inicio') M.innerHTML=warn+vAgenda('inicio');
   else if(v==='tareas') M.innerHTML=warn+vTareas();
   else if(v==='pagos') M.innerHTML=warn+vPagos();
   else if(v==='bitacora') M.innerHTML=vBitacora();
@@ -238,6 +280,7 @@ function render(){
   else if(v==='porcliente') M.innerHTML=warn+vPorCliente();
   else if(v==='stats') M.innerHTML=warn+vStats();
   else M.innerHTML=vSoon(v);
+  etiquetarTablas(M); marcarSolapa();
   bind();
 }
 
@@ -465,19 +508,28 @@ function aprovechar(){ // visitas próximas (30 días) a clientes con entregas/r
 // Equipos listos en el taller que nadie tiene programado llevar: "¿quién las lleva?"
 function sinQuienLleve(){ return ingresosAbiertos().map(x=>({x,a:avance(x)})).filter(({x,a})=>ingListo(x,a)&&!visitasProx(45).some(v=>mismoCliente(v.cliente,x.cliente))); }
 function recActivos(){ return Object.entries(S.rec).map(([id,r])=>({id,...r})).filter(r=>r.estado!=='hecho').sort((a,b)=>(a.pospuesto_hasta||a.cuando||'').localeCompare(b.pospuesto_hasta||b.cuando||'')); }
-function vAgenda(){
+// Inicio = panel general (lo más importante arriba) con accesos rápidos; Agenda = lo mismo con foco en visitas.
+function vAgenda(modo){
   const A=aprovechar(), V=visitasProx(60), E=entregasPend(), R=recActivos(), now=ahoraISO();
   const prox=c=>visitasProx(90).find(v=>mismoCliente(v.cliente,c));
   const porDia={}; V.forEach(v=>(porDia[v.fecha]=porDia[v.fecha]||[]).push(v));
   const porCli={}; E.forEach(e=>(porCli[e.cliente||'(sin cliente)']=porCli[e.cliente||'(sin cliente)']||[]).push(e));
-  return `<div class="head"><div style="flex:1;min-width:200px"><div class="eyebrow">${HOY.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div><h1>Agenda y recordatorios</h1></div>
-    <button class="btn primary" data-new="vis">+ Visita</button><button class="btn" data-new="ent">+ Para llevar/retirar</button><button class="btn" data-new="rec">+ Recordatorio</button></div>
+  const tp=Object.values(S.tar).filter(t=>t.estado!=='hecho'&&!t.borrado).length, enT=ingresosAbiertos().length;
+  const fecha=HOY.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
+  return (modo==='inicio'?`<div class="head"><div style="flex:1;min-width:200px"><div class="eyebrow">${fecha}</div><h1>Hola 👋</h1></div></div>
+    <section class="kpis">
+      <button class="kpi" data-go="ingresos" style="text-align:left;cursor:pointer"><div class="l">En el taller</div><div class="v">${enT}</div><div class="n">ingresos abiertos</div></button>
+      <button class="kpi" data-go="tareas" style="text-align:left;cursor:pointer"><div class="l">Tareas</div><div class="v">${tp}</div><div class="n">pendientes</div></button>
+    </section>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" data-new="ing" style="flex:1">+ Ingreso al taller</button><button class="btn" data-new="tar" style="flex:1">+ Tarea</button><button class="btn" data-new="vis" style="flex:1">+ Visita</button><button class="btn" data-new="rec" style="flex:1">+ Recordatorio</button></div>`
+  :`<div class="head"><div style="flex:1;min-width:200px"><div class="eyebrow">${fecha}</div><h1>Agenda y recordatorios</h1></div>
+    <button class="btn primary" data-new="vis">+ Visita</button><button class="btn" data-new="ent">+ Para llevar/retirar</button><button class="btn" data-new="rec">+ Recordatorio</button></div>`)+`
   ${(()=>{ // Resumen: REAL (lo que está en el taller por hacer) vs TEÓRICO (lo que vence este mes y todavía no llegó)
     const abiertos=ingresosAbiertos().filter(x=>x.estado!=='Listo para entregar').map(x=>({x,a:avance(x)}));
     const real=abiertos.map(({x,a})=>({c:x.cliente,q:x.equipo,falta:Math.max(a.total-a.hechos,a.total?0:1)})).filter(r=>r.falta>0);
     const enTaller=new Set(abiertos.flatMap(({a})=>a.L.map(i=>normId(i.id))));
     const y=HOY.getFullYear(), m=HOY.getMonth();
-    const teo=vencimientos().filter(v=>!v.rehecha&&v.prox.getFullYear()===y&&v.prox.getMonth()===m&&!enTaller.has(normId(v.id)));
+    const teo=vencimientos().filter(v=>!v.rehecha&&((v.prox.getFullYear()===y&&v.prox.getMonth()===m)||(v.dias<0&&v.dias>=-240))&&!enTaller.has(normId(v.id)));
     return `<div class="card"><h2>📅 Esta semana</h2><section class="grid2" style="gap:12px">
       <div><div style="font-weight:600;margin-bottom:6px">En el taller para hacer (real)</div>${real.length?`<div class="list">${real.map(r=>`<div class="row"><span class="grow">${esc(r.c)} · ${esc(r.q||'')}</span><span class="chip acc">faltan ${r.falta}</span></div>`).join('')}</div>`:'<p class="empty" style="margin:0">Nada cargado en el taller.</p>'}</div>
       <div><div style="font-weight:600;margin-bottom:6px">Vence este mes y no llegó (teórico)</div>${teo.length?`<div class="list">${cnt(teo,v=>v.cliente).map(([c,n])=>`<div class="row"><span class="grow">${esc(c)}</span><span class="chip warn">${n} equipos</span></div>`).join('')}</div><button class="btn small" data-go="pendientes" style="margin-top:8px">Ver detalle</button>`:'<p class="empty" style="margin:0">Nada.</p>'}</div>
@@ -645,8 +697,8 @@ function avisos(){
     .forEach(({v,items})=>A.push({tipo:'acc',txt:`${v.fecha===hoyV?'HOY':'Mañana'} ${v.tecnico||'alguien'} va a ${v.cliente}${v.tareas?' ('+v.tareas+')':''}${items.length?': '+items.map(i=>(i.tipo||'Entregar')+' '+i.que).join(' · '):''}`,go:'agenda'}));
   const pr=propios().filter(p=>p.dias!=null&&p.dias<=14);
   if(pr.length) A.push({tipo:'warn',txt:`Calibrar equipos propios: ${pr.map(p=>p.id).join(', ')} (${pr[0].dias<0?'vencidos':'vencen el '+fmt(pr[0].prox)})`,go:'prestamos'});
-  const V=vencimientos().filter(x=>!x.rehecha&&x.prox.getFullYear()===y&&x.prox.getMonth()===m);
-  cnt(V,x=>x.cliente).forEach(([c,n])=>A.push({tipo:'acc',txt:`Avisar a ${c}: este mes le tocan ${n} equipo${n>1?'s':''} (${cnt(V.filter(x=>x.cliente===c),x=>x.area).map(([a,k])=>k+' '+a.toLowerCase()+(k>1?'s':'')).join(', ')})`,go:'pendientes'}));
+  const V=vencimientos().filter(x=>!x.rehecha&&((x.prox.getFullYear()===y&&x.prox.getMonth()===m)||(x.dias<0&&x.dias>=-240)));
+  cnt(V,x=>x.cliente).forEach(([c,n])=>{ const at=V.filter(x=>x.cliente===c&&x.dias<0); A.push({tipo:at.length?'bad':'acc',txt:`${at.length?'ATRASADO · ':''}Avisar a ${c}: ${n} equipo${n>1?'s':''} para hacer (${cnt(V.filter(x=>x.cliente===c),x=>x.area).map(([a,k])=>k+' '+a.toLowerCase()+(k>1?'s':'')).join(', ')})${at.length?` — ${at.length} tocaban en ${[...new Set(at.map(x=>MESES[x.prox.getMonth()].toLowerCase()))].join(' y ')}`:''}`,go:'pendientes'}); });
   const at=ingresosAbiertos().filter(x=>x.dias>=ING_CRITICO&&x.estado!=='Listo para entregar');
   if(at.length) A.push({tipo:'bad',txt:`${at.length} equipo${at.length>1?'s':''} atascado${at.length>1?'s':''} en el taller hace más de ${ING_CRITICO} días: ${at.slice(0,4).map(x=>x.cliente+' '+(x.equipo||'')).join(', ')}${at.length>4?'…':''}`,go:'ingresos'});
   sinQuienLleve().forEach(({x,a})=>A.push({tipo:'warn',txt:`${txtAvance(x,a)} y nadie tiene programado ir a ${x.cliente}. ¿Quién las lleva?`,go:'agenda',llevo:x.cliente,que:'Entregar '+(x.equipo||'equipos')+(a.total?' ('+a.total+')':'')}));
@@ -689,8 +741,11 @@ function vPend(){
   const opts=[['venc','Atrasados']]; for(let i=0;i<4;i++){ const d=new Date(y,m+i,1); opts.push([d.getFullYear()+'-'+d.getMonth(), (i===0?'Este mes · ':i===1?'Mes que viene · ':'')+MESES[d.getMonth()]+' '+d.getFullYear()]); }
   if(!S.pendTab) S.pendTab=y+'-'+m; const t=S.pendTab;
   if(!S.pendArea) S.pendArea=''; const fa=S.pendArea;
-  const sel=x=> t==='venc' ? (x.dias<0&&x.dias>=-240) : (x.prox.getFullYear()+'-'+x.prox.getMonth()===t);
-  const n=k=>V.filter(x=>(!fa||x.area===fa)&&(k==='venc'?(x.dias<0&&x.dias>=-240):(x.prox.getFullYear()+'-'+x.prox.getMonth()===k))).length;
+  // "Este mes" también arrastra lo atrasado que todavía no se hizo (ej. Maipú: tocaba en agosto, se pateó a octubre)
+  const esteMes=y+'-'+m, atrasado=x=>!x.rehecha&&x.dias<0&&x.dias>=-240&&!(x.prox.getFullYear()===y&&x.prox.getMonth()===m);
+  const enTab=(x,k)=> k==='venc' ? (x.dias<0&&x.dias>=-240) : (x.prox.getFullYear()+'-'+x.prox.getMonth()===k)||(k===esteMes&&atrasado(x));
+  const sel=x=>enTab(x,t);
+  const n=k=>V.filter(x=>(!fa||x.area===fa)&&enTab(x,k)).length;
   const L=V.filter(x=>(!fa||x.area===fa)&&sel(x));
   const g={}; L.forEach(x=>(g[x.cliente]=g[x.cliente]||[]).push(x));
   const grupos=Object.entries(g).sort((a,b)=>b[1].length-a[1].length);
@@ -704,7 +759,7 @@ function vPend(){
     return `<details class="card" style="padding:0" open><summary style="padding:14px 18px;cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><strong style="flex:1;min-width:140px">${esc(c)}</strong>${cnt(xs,x=>x.area).map(([a,k])=>`<span class="chip acc">${k} ${a.toLowerCase()}${k>1?'s':''}</span>`).join('')}
       <button class="btn small" data-copymsg="${gi}">Copiar mensaje</button><button class="btn small" data-wamsg="${gi}">Abrir WhatsApp</button></summary>
     <div style="overflow-x:auto;border-top:1px solid var(--line)"><table><thead><tr><th>Sede</th><th>Equipo</th><th>ID</th><th>Detalle</th><th>Último</th><th>Toca</th></tr></thead><tbody>
-    ${Object.entries(sedes).sort().map(([s,ys])=>ys.sort((a,b)=>a.prox-b.prox).map(x=>`<tr${x.area==='Micropipeta'?` data-inf="${esc(x.informe)}"`:''}><td>${esc(s||'—')}</td><td>${x.area}</td><td class="mono">${esc(x.id)}</td><td>${esc(x.detalle)}</td><td class="mono">${esc(x.informe)} · ${fmt(x.ult)}</td><td class="mono">${fmt(x.prox)}${x.rehecha?` <span class="chip ok" title="Ese ID se volvió a calibrar">ya se rehízo: ${esc(x.rehecha.inf)}</span>`:x.dias<0?' <span class="chip bad">vencido</span>':''}</td></tr>`).join('')).join('')}
+    ${Object.entries(sedes).sort().map(([s,ys])=>ys.sort((a,b)=>a.prox-b.prox).map(x=>`<tr${x.area==='Micropipeta'?` data-inf="${esc(x.informe)}"`:''}><td>${esc(s||'—')}</td><td>${x.area}</td><td class="mono">${esc(x.id)}</td><td>${esc(x.detalle)}</td><td class="mono">${esc(x.informe)} · ${fmt(x.ult)}</td><td class="mono">${fmt(x.prox)}${x.rehecha?` <span class="chip ok" title="Ese ID se volvió a calibrar">ya se rehízo: ${esc(x.rehecha.inf)}</span>`:x.dias<0?` <span class="chip bad">atrasado · tocaba en ${MESES[x.prox.getMonth()].toLowerCase()}</span>`:''}</td></tr>`).join('')).join('')}
     </tbody></table></div></details>`}).join('')||'<p class="empty">Nada para este período.</p>'}`;
 }
 // ---- Termómetros de Mitash (M-1…M-16): dónde está cada uno. No van en la lista de pagos.
@@ -953,7 +1008,7 @@ function vLogin(msg){
     <div class="field"><label for="lemail">Email</label><input id="lemail" type="email" autocomplete="username" required></div>
     <div class="field"><label for="lpass">Contraseña</label><input id="lpass" type="password" autocomplete="current-password" required></div>
     <div class="err" id="lerr">${esc(msg||'')}</div>
-    <button class="btn primary" type="submit">Entrar</button><div class="eyebrow">v4</div></form>`;
+    <button class="btn primary" type="submit">Entrar</button><div class="eyebrow">v5</div></form>`;
   $('#flogin').onsubmit=async e=>{ e.preventDefault(); $('#lerr').textContent='Entrando…';
     let error; try{ ({error}=await conTiempo(sb.auth.signInWithPassword({email:$('#lemail').value.trim(),password:$('#lpass').value}),15000)); }catch(e){ error=e; }
     if(error){ $('#lerr').textContent=error.message==='tiempo'?'No responde el servidor. Revisá internet y probá de nuevo.':'Email o contraseña incorrectos.'; return; }
