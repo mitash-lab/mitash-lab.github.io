@@ -345,13 +345,32 @@ function vTareas(){
 }
 // ---- Ingresos al taller: cada equipo que entra lleva un contador de días (pedido de Claudio).
 const ING_ALERTA=15, ING_CRITICO=30;
+// Avance de un ingreso: qué IDs de la lista ya tienen informe (micropipeta o termómetro) desde la fecha de ingreso.
+function avance(x){
+  const ids=String(x.ids||x.serie||'').split(/[\n,;]+/).map(s=>s.trim()).filter(Boolean);
+  const hechos=new Map(); [...all(),...S.term].forEach(r=>{ if(r.id&&r.fecha>=(x.fecha||'')) hechos.set(normId(r.id),r.informe); });
+  const L=ids.map(id=>({id,informe:hechos.get(normId(id))||null}));
+  const total=Math.max(Number(x.cantidad)||0,L.length);
+  return {L,total,hechos:L.filter(i=>i.informe).length};
+}
+function remito(id){
+  const x=S.ing[id]; if(!x) return; const a=avance(x);
+  const w=window.open('','_blank'); if(!w){ toast('Permití las ventanas emergentes para imprimir'); return; }
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>Remito ${esc(x.cliente)}</title><style>body{font-family:Arial,sans-serif;margin:32px;font-size:13px}h1{font-size:20px;margin:0}table{border-collapse:collapse;width:100%;margin-top:14px}td,th{border:1px solid #999;padding:6px;text-align:left}.f{margin-top:60px;display:flex;gap:60px}.f div{border-top:1px solid #000;padding-top:4px;width:220px}</style>
+  <h1>MITASH · Remito de devolución</h1><p>Cliente: <b>${esc(x.cliente)}</b> · Ingresó: ${fmt(pd(x.fecha))} · Devolución: ${fmt(new Date())}${x.remito?' · Recibo del cliente: '+esc(x.remito):''}</p>
+  <p>${esc(x.equipo||'')} · Cantidad: ${a.total}</p><table><tr><th>#</th><th>ID / N° de serie</th><th>N° de informe</th></tr>${a.L.map((i,k)=>`<tr><td>${k+1}</td><td>${esc(i.id)}</td><td>${esc(i.informe||'')}</td></tr>`).join('')}</table>
+  <div class="f"><div>Entregó (Mitash)</div><div>Recibió (cliente) · firma y aclaración</div></div><script>print()<\/script>`);
+  w.document.close();
+}
 function ingresosAbiertos(){ return Object.entries(S.ing).map(([id,x])=>({id,...x})).filter(x=>!x.borrado&&x.estado!=='Entregado').map(x=>({...x,dias:x.fecha?-days(pd(x.fecha),HOY):0})).sort((a,b)=>b.dias-a.dias); }
 function vIngresos(){
   const L=ingresosAbiertos(), at=L.filter(x=>x.dias>=ING_CRITICO&&x.estado!=='Listo para entregar');
   return `<div class="head"><div style="flex:1;min-width:200px"><div class="eyebrow">Cada equipo que entra, con contador de días</div><h1>Ingresos al taller</h1></div><button class="btn primary" data-new="ing">+ Ingreso</button></div>
   <section class="kpis"><div class="kpi"><div class="l">En el taller</div><div class="v">${L.length}</div></div><div class="kpi bad"><div class="l">Atascados (+${ING_CRITICO} días)</div><div class="v">${at.length}</div></div><div class="kpi warn"><div class="l">Urgentes</div><div class="v">${L.filter(x=>x.prioridad==='Urgente').length}</div></div><div class="kpi"><div class="l">Listos para entregar</div><div class="v">${L.filter(x=>x.estado==='Listo para entregar').length}</div></div></section>
-  <div class="tablewrap"><table><thead><tr><th>Días</th><th>Ingresó</th><th>Cliente</th><th>Equipo</th><th>ID</th><th>Motivo</th><th>Estado</th><th>Quién</th><th></th></tr></thead><tbody>
-  ${L.map(x=>`<tr><td class="mono"><span class="chip ${x.estado==='Listo para entregar'?'ok':x.dias>=ING_CRITICO?'bad':x.dias>=ING_ALERTA?'warn':'na'}">${x.dias} d</span></td><td class="mono">${fmt(pd(x.fecha))}</td><td>${esc(x.cliente||'')}</td><td>${x.prioridad==='Urgente'?'<span class="chip bad">Urgente</span> ':''}${esc(x.equipo||'')}</td><td class="mono">${esc(x.serie||'')}</td><td>${esc(x.motivo||'')}</td><td>${esc(x.estado||'Ingresado')}</td><td>${esc(x.responsable||'')}</td><td><button class="btn small" data-edit="ing:${esc(x.id)}">Editar</button></td></tr>`).join('')||'<tr><td colspan="9" class="empty">No hay equipos en el taller. Cargá cada uno que entra con "+ Ingreso".</td></tr>'}
+  <div class="tablewrap"><table><thead><tr><th>Días</th><th>Ingresó</th><th>Cliente</th><th>Qué entró</th><th>Avance</th><th>Motivo</th><th>Estado</th><th>Quién</th><th></th></tr></thead><tbody>
+  ${L.map(x=>{const a=avance(x); return `<tr><td class="mono"><span class="chip ${x.estado==='Listo para entregar'?'ok':x.dias>=ING_CRITICO?'bad':x.dias>=ING_ALERTA?'warn':'na'}">${x.dias} d</span></td><td class="mono">${fmt(pd(x.fecha))}</td><td>${esc(x.cliente||'')}${x.remito?`<div class="eyebrow">recibo ${esc(x.remito)}</div>`:''}</td><td>${x.prioridad==='Urgente'?'<span class="chip bad">Urgente</span> ':''}${esc(x.equipo||'')}${x.serie?` <span class="mono">${esc(x.serie)}</span>`:''}</td>
+    <td>${a.total?`<span class="chip ${a.hechos>=a.total?'ok':'acc'}">${a.hechos} de ${a.total} hechos</span>${a.L.length?`<details><summary class="eyebrow" style="cursor:pointer">ver IDs</summary>${a.L.map(i=>`<div class="mono" style="font-size:12px">${i.informe?'✅ <s>'+esc(i.id)+'</s> '+esc(i.informe):'⬜ '+esc(i.id)}</div>`).join('')}</details>`:'<div class="eyebrow">sin lista de IDs</div>'}`:'<span class="empty">—</span>'}</td>
+    <td>${esc(x.motivo||'')}</td><td>${esc(x.estado||'Ingresado')}</td><td>${esc(x.responsable||'')}</td><td><button class="btn small" data-edit="ing:${esc(x.id)}">Editar</button> <button class="btn small" data-remito="${esc(x.id)}">Remito</button></td></tr>`}).join('')||'<tr><td colspan="9" class="empty">No hay equipos en el taller. Cargá cada uno que entra con "+ Ingreso".</td></tr>'}
   </tbody></table></div>`;
 }
 const DIAS=['dom','lun','mar','mié','jue','vie','sáb'];
@@ -371,6 +390,16 @@ function vAgenda(){
   const porCli={}; E.forEach(e=>(porCli[e.cliente||'(sin cliente)']=porCli[e.cliente||'(sin cliente)']||[]).push(e));
   return `<div class="head"><div style="flex:1;min-width:200px"><div class="eyebrow">${HOY.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div><h1>Agenda y recordatorios</h1></div>
     <button class="btn primary" data-new="vis">+ Visita</button><button class="btn" data-new="ent">+ Para llevar/retirar</button><button class="btn" data-new="rec">+ Recordatorio</button></div>
+  ${(()=>{ // Resumen: REAL (lo que está en el taller por hacer) vs TEÓRICO (lo que vence este mes y todavía no llegó)
+    const abiertos=ingresosAbiertos().filter(x=>x.estado!=='Listo para entregar').map(x=>({x,a:avance(x)}));
+    const real=abiertos.map(({x,a})=>({c:x.cliente,q:x.equipo,falta:Math.max(a.total-a.hechos,a.total?0:1)})).filter(r=>r.falta>0);
+    const enTaller=new Set(abiertos.flatMap(({a})=>a.L.map(i=>normId(i.id))));
+    const y=HOY.getFullYear(), m=HOY.getMonth();
+    const teo=vencimientos().filter(v=>v.prox.getFullYear()===y&&v.prox.getMonth()===m&&!enTaller.has(normId(v.id)));
+    return `<div class="card"><h2>📅 Esta semana</h2><section class="grid2" style="gap:12px">
+      <div><div style="font-weight:600;margin-bottom:6px">En el taller para hacer (real)</div>${real.length?`<div class="list">${real.map(r=>`<div class="row"><span class="grow">${esc(r.c)} · ${esc(r.q||'')}</span><span class="chip acc">faltan ${r.falta}</span></div>`).join('')}</div>`:'<p class="empty" style="margin:0">Nada cargado en el taller.</p>'}</div>
+      <div><div style="font-weight:600;margin-bottom:6px">Vence este mes y no llegó (teórico)</div>${teo.length?`<div class="list">${cnt(teo,v=>v.cliente).map(([c,n])=>`<div class="row"><span class="grow">${esc(c)}</span><span class="chip warn">${n} equipos</span></div>`).join('')}</div><button class="btn small" data-go="pendientes" style="margin-top:8px">Ver detalle</button>`:'<p class="empty" style="margin:0">Nada.</p>'}</div>
+    </section></div>`; })()}
   ${(()=>{const now=ahoraISO(); const AV=avisos().map(a=>({...a,k:slug(a.txt).slice(0,80)})).filter(a=>!(S.avp[a.k]&&S.avp[a.k].hasta>now)); return AV.length?`<div class="card"><h2>🔔 Avisos automáticos</h2><div class="list">${AV.map(a=>`<div class="row" style="flex-wrap:wrap"><span class="chip ${a.tipo}" style="min-width:10px">&nbsp;</span><span class="grow" style="min-width:180px">${esc(a.txt)}</span><button class="btn small" data-go="${a.go}">Ver</button><button class="btn small" data-avsnooze="${esc(a.k)}:6">Posponer 6 h</button><button class="btn small" data-avsnooze="${esc(a.k)}:24">1 día</button></div>`).join('')}</div></div>`:''})()}
   ${A.length?`<div class="card" style="border-color:var(--warn-fg);background:var(--warn-bg)"><h2 style="color:var(--warn-fg)">🚗 Aprovechar viaje</h2><div class="list">${A.map(({v,items})=>`<div class="row" style="align-items:flex-start"><div class="grow"><strong>${esc(v.tecnico||'Alguien')} va a ${esc(v.cliente)} el ${fdia(v.fecha)}${v.hora?' '+esc(v.hora):''}</strong>
     <div>${items.map(e=>`→ ${esc(e.tipo||'Entregar')}: ${esc(e.que)}${e.responsable?` <span class="eyebrow">(lo tiene ${esc(e.responsable)})</span>`:''}`).join('<br>')}</div></div><button class="btn small" data-edit="vis:${esc(v.id)}">Ver visita</button></div>`).join('')}</div></div>`:''}
@@ -388,7 +417,7 @@ const FORMS={
   vis:['Visita',[['fecha','Fecha','date'],['hora','Hora (opcional)','time'],['tecnico','Técnico','sel:'+TECNICOS.join('|')],['cliente','Cliente','cli'],['tareas','Qué va a hacer (ej. centrífugas, preventivo heladera)','text'],['notas','Notas','area'],['hecho','Visita hecha','check']]],
   ent:['Para llevar / retirar',[['tipo','Tipo','sel:Entregar|Retirar|Llevar material'],['cliente','Cliente','cli'],['que','Qué (ej. 5 termómetros calibrados)','text'],['responsable','Quién lo tiene / lo preparó','sel:'+TECNICOS.join('|')],['notas','Notas','area']]],
   tar:['Tarea',[['texto','Qué hay que hacer (ej. Centrífuga caseros, revisar cierre)','text'],['cliente','Cliente (opcional)','cli'],['responsable','Quién','sel:|'+TECNICOS.join('|')],['para','Para cuándo','date'],['prioridad','Prioridad','sel:Normal|Urgente'],['notas','Notas','area']]],
-  ing:['Ingreso al taller',[['fecha','Fecha de ingreso','date'],['cliente','Cliente','cli'],['equipo','Equipo (ej. micropipeta Gilson multicanal)','text'],['serie','ID / N° de serie','text'],['motivo','Motivo (calibración, reparación…)','text'],['responsable','Quién lo tiene','sel:|'+TECNICOS.join('|')],['prioridad','Prioridad','sel:Normal|Urgente'],['estado','Estado','sel:Ingresado|En revisión|Esperando repuesto|Listo para entregar|Entregado'],['notas','Notas','area']]],
+  ing:['Ingreso al taller',[['fecha','Fecha de ingreso','date'],['cliente','Cliente','cli'],['equipo','Qué entró (ej. micropipetas, termómetros, centrífuga)','text'],['cantidad','Cantidad','number'],['ids','IDs / N° de serie (uno por línea; se tachan solos cuando se hace el informe)','area'],['trajo','Quién lo trajo','sel:|'+TECNICOS.join('|')],['remito','N° de recibo / remito del cliente','text'],['serie','ID (si es un solo equipo)','text'],['motivo','Motivo (calibración, reparación…)','text'],['responsable','Quién lo tiene','sel:|'+TECNICOS.join('|')],['prioridad','Prioridad','sel:Normal|Urgente'],['estado','Estado','sel:Ingresado|En revisión|Esperando repuesto|Listo para entregar|Entregado'],['notas','Notas','area']]],
   rec:['Recordatorio',[['texto','Recordarme…','text'],['cuando','Cuándo','datetime-local'],['para','Para quién','sel:Todos|'+TECNICOS.join('|')],['repetir','Repetir','sel:|cada semana|cada mes|cada año'],['notas','Notas','area']]]
 };
 function editar(col,id){
@@ -769,6 +798,7 @@ function bind(){
   M.querySelectorAll('[data-avsnooze]').forEach(b=>b.onclick=async()=>{ const [k,h]=b.dataset.avsnooze.split(':'); const d=new Date(Date.now()+Number(h)*3600000); d.setMinutes(d.getMinutes()-d.getTimezoneOffset());
     if(!S.db){ toast('Para guardar tenés que entrar con tu usuario'); return; }
     const o={hasta:d.toISOString().slice(0,16)}; try{ await S.db.doc('avisos/'+k).set(o); S.avp[k]=o; render(); toast(Number(h)===6?'Pospuesto 6 horas':'Pospuesto 1 día'); }catch(e){ toast('No se pudo guardar'); } });
+  M.querySelectorAll('[data-remito]').forEach(b=>b.onclick=()=>remito(b.dataset.remito));
   M.querySelectorAll('[data-pnew]').forEach(b=>b.onclick=()=>editarPrest(null));
   M.querySelectorAll('[data-pedit]').forEach(b=>b.onclick=()=>editarPrest(b.dataset.pedit));
   const COL={vis:S.vis,ent:S.ent,rec:S.rec,tar:S.tar,ing:S.ing};
