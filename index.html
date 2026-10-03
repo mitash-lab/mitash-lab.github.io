@@ -181,6 +181,11 @@ const miss=t=>`<span class="missing">${esc(t||'completar')}</span>`;
 function toast(t){ const el=document.createElement('div'); el.className='toast'; el.textContent=t; document.body.appendChild(el); setTimeout(()=>el.remove(),2400); }
 
 function all(){
+  // se recalcula solo si cambiaron los datos (antes se rehacía cientos de veces por pantalla y en el celu se trababa)
+  const c=S._allCache; if(c&&c.b===S.base&&c.o===S.over&&c.n===Object.keys(S.over).length&&c.r===S._r) return c.v;
+  const v=allCalc(); S._allCache={b:S.base,o:S.over,n:Object.keys(S.over).length,r:S._r,v}; return v;
+}
+function allCalc(){
   const m=new Map(); S.base.forEach(r=>m.set(r.informe,Object.assign({},r)));
   Object.entries(S.over).forEach(([k,o])=>{ if(o&&o.borrado){m.delete(k);return;} m.set(k,Object.assign(m.get(k)||{},o,{informe:k})); });
   return [...m.values()].sort((a,b)=>b.informe.localeCompare(a.informe,undefined,{numeric:true}));
@@ -209,6 +214,7 @@ document.querySelectorAll('.navbtn[data-view]').forEach(b=>b.addEventListener('c
 
 function render(){
   document.querySelectorAll('.navbtn').forEach(b=>b.toggleAttribute('aria-current',b.dataset.view===S.view)); document.querySelectorAll('.navbtn[aria-current]').forEach(b=>b.setAttribute('aria-current','page'));
+  S._r=(S._r||0)+1; // nueva pantalla: invalida los cálculos guardados
   const v=S.view, M=$('#main');
   const warn = S.db===null && S.dbChecked ? '<div class="banner">En esta vista los cambios no se guardan (la base compartida no está disponible). Podés consultar todo igual.</div>' : '';
   if(v==='agenda') M.innerHTML=warn+vAgenda();
@@ -635,8 +641,12 @@ function avisos(){
 }
 const addM=(d,n)=>new Date(d.getFullYear(),d.getMonth()+n,d.getDate());
 function vencimientos(){
-  const out=[];
-  pipetas().forEach(p=>{ if(/mitash/i.test(p.cliente||'')) return; const r=all().find(x=>x.informe===p.informe)||{};
+  if(S._vc&&S._vc.r===S._r) return S._vc.v; // una vez por pantalla
+  const v=vencimientosCalc(); S._vc={r:S._r,v}; return v;
+}
+function vencimientosCalc(){
+  const out=[], porInf=new Map(all().map(x=>[x.informe,x]));
+  pipetas().forEach(p=>{ if(/mitash/i.test(p.cliente||'')) return; const r=porInf.get(p.informe)||{};
     out.push({area:'Micropipeta',id:p.id,cliente:p.cliente||'(sin cliente)',sede:r.sector||'',detalle:[r.codigo_cliente,r.marca,vol(r)].filter(Boolean).join(' · '),ult:p.ult,informe:p.informe}); });
   const g=new Map(); S.term.forEach(t=>{ if(t.propio||!t.id) return; const k=normId(t.id)+'|'+slug(t.cliente); const d=pd(t.fecha); const c=g.get(k); if(!c||d>c.ult) g.set(k,{t,ult:d}); });
   g.forEach(({t,ult})=>out.push({area:'Termómetro',id:t.id,cliente:t.cliente||'(sin cliente)',sede:t.sede||'',detalle:[t.marca,t.departamento].filter(Boolean).join(' · '),ult,informe:t.informe}));
