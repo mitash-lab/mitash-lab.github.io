@@ -124,6 +124,8 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--surface-2)}
   <nav class="side" aria-label="Secciones">
     <div class="brand">Mitash<small>Gestión de metrología</small></div>
     <button class="navbtn" data-view="agenda">Agenda y recordatorios</button>
+    <button class="navbtn" data-view="tareas">Tareas pendientes</button>
+    <button class="navbtn" data-view="ingresos">Ingresos al taller</button>
     <button class="navbtn" data-view="pendientes">Para hacer (vencimientos)</button>
     <button class="navbtn" data-view="prestamos">Termómetros Mitash</button>
     <button class="navbtn" data-view="tablero">Tablero general</button>
@@ -160,7 +162,7 @@ window.addEventListener('unhandledrejection',e=>{ const m=document.getElementByI
 const HOY = new Date(); HOY.setHours(0,0,0,0);
 const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const MES3=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-const S={base:[],trab:[],term:[],prest:{},vis:{},ent:{},rec:{},ft:{q:'',area:'',anio:'',cliente:''},over:{},clientes:{},view:'agenda',db:null,f:{q:'',anio:'',cliente:'',res:'',fac:''},page:0,calTab:'prox',pcAnio:String(new Date().getFullYear()),stAnio:String(new Date().getFullYear())};
+const S={base:[],trab:[],term:[],prest:{},vis:{},ent:{},rec:{},tar:{},ing:{},ft:{q:'',area:'',anio:'',cliente:''},over:{},clientes:{},view:'agenda',db:null,f:{q:'',anio:'',cliente:'',res:'',fac:''},page:0,calTab:'prox',pcAnio:String(new Date().getFullYear()),stAnio:String(new Date().getFullYear())};
 try{ const v=localStorage.getItem('mitash.view'); if(v) S.view=v; }catch(e){}
 const $=s=>document.querySelector(s);
 const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -205,6 +207,8 @@ function render(){
   const v=S.view, M=$('#main');
   const warn = S.db===null && S.dbChecked ? '<div class="banner">En esta vista los cambios no se guardan (la base compartida no está disponible). Podés consultar todo igual.</div>' : '';
   if(v==='agenda') M.innerHTML=warn+vAgenda();
+  else if(v==='tareas') M.innerHTML=warn+vTareas();
+  else if(v==='ingresos') M.innerHTML=warn+vIngresos();
   else if(v==='tablero') M.innerHTML=warn+vTablero();
   else if(v==='trabajos'||v.startsWith('area:')) M.innerHTML=warn+vTrab();
   else if(v==='panel') M.innerHTML=warn+vPanel();
@@ -304,6 +308,29 @@ function vCal(){
 // ---- Agenda: visitas (cronograma), cosas para llevar/retirar y recordatorios.
 // Clave del sistema: si hay una visita programada a un cliente que tiene algo pendiente de entregar, avisar "aprovechar viaje".
 const TECNICOS=['Melina','Jorge','Lucho','Maxi','Claudio'];
+const COLS={vis:'visitas',ent:'entregas',rec:'recordatorios',tar:'tareas',ing:'ingresos',prest:'prestamos'}; // clave corta en S -> colección
+// ---- Tareas: reemplaza la lista de pendientes que Claudio fija y reenvía en el grupo "Solicitudes".
+function vTareas(){
+  const L=Object.entries(S.tar).map(([id,t])=>({id,...t})).filter(t=>t.estado!=='hecho'&&!t.borrado)
+    .sort((a,b)=>(b.prioridad==='Urgente')-(a.prioridad==='Urgente')||(a.para||'9').localeCompare(b.para||'9'));
+  const hechas=Object.entries(S.tar).map(([id,t])=>({id,...t})).filter(t=>t.estado==='hecho'&&!t.borrado).sort((a,b)=>(b.hecho_el||'').localeCompare(a.hecho_el||'')).slice(0,10);
+  const porResp={}; L.forEach(t=>(porResp[t.responsable||'Sin asignar']=porResp[t.responsable||'Sin asignar']||[]).push(t));
+  const hoy=iso(HOY);
+  return `<div class="head"><div style="flex:1;min-width:200px"><div class="eyebrow">Lo que antes iba en el mensaje fijado de "Solicitudes"</div><h1>Tareas pendientes</h1></div><button class="btn primary" data-new="tar">+ Tarea</button></div>
+  ${Object.keys(porResp).length?Object.entries(porResp).map(([r,ts])=>`<div class="card"><h2>${esc(r)} <span class="chip acc">${ts.length}</span></h2><div class="list">${ts.map(t=>`<div class="row" style="align-items:flex-start"><div class="grow"><div>${t.prioridad==='Urgente'?'<span class="chip bad">Urgente</span> ':''}${esc(t.texto)}</div><div class="eyebrow">${t.cliente?esc(t.cliente)+' · ':''}${t.para?'para el '+fdia(t.para)+(t.para<hoy?' <span style="color:var(--bad-fg)">(atrasada)</span>':''):'sin fecha'}${t.creado?' · cargada '+fmt(pd(t.creado)):''}</div></div><button class="btn small" data-done="tar:${esc(t.id)}">Hecha</button><button class="btn small" data-edit="tar:${esc(t.id)}">Editar</button></div>`).join('')}</div></div>`).join(''):'<p class="empty">No hay tareas pendientes.</p>'}
+  ${hechas.length?`<details class="card"><summary style="cursor:pointer"><strong>Hechas recientemente</strong></summary><div class="list">${hechas.map(t=>`<div class="row"><span class="grow" style="text-decoration:line-through">${esc(t.texto)}</span><span class="eyebrow">${esc(t.responsable||'')} · ${t.hecho_el?fmt(pd(t.hecho_el)):''}</span></div>`).join('')}</div></details>`:''}`;
+}
+// ---- Ingresos al taller: cada equipo que entra lleva un contador de días (pedido de Claudio).
+const ING_ALERTA=15, ING_CRITICO=30;
+function ingresosAbiertos(){ return Object.entries(S.ing).map(([id,x])=>({id,...x})).filter(x=>!x.borrado&&x.estado!=='Entregado').map(x=>({...x,dias:x.fecha?-days(pd(x.fecha),HOY):0})).sort((a,b)=>b.dias-a.dias); }
+function vIngresos(){
+  const L=ingresosAbiertos(), at=L.filter(x=>x.dias>=ING_CRITICO&&x.estado!=='Listo para entregar');
+  return `<div class="head"><div style="flex:1;min-width:200px"><div class="eyebrow">Cada equipo que entra, con contador de días</div><h1>Ingresos al taller</h1></div><button class="btn primary" data-new="ing">+ Ingreso</button></div>
+  <section class="kpis"><div class="kpi"><div class="l">En el taller</div><div class="v">${L.length}</div></div><div class="kpi bad"><div class="l">Atascados (+${ING_CRITICO} días)</div><div class="v">${at.length}</div></div><div class="kpi warn"><div class="l">Urgentes</div><div class="v">${L.filter(x=>x.prioridad==='Urgente').length}</div></div><div class="kpi"><div class="l">Listos para entregar</div><div class="v">${L.filter(x=>x.estado==='Listo para entregar').length}</div></div></section>
+  <div class="tablewrap"><table><thead><tr><th>Días</th><th>Ingresó</th><th>Cliente</th><th>Equipo</th><th>ID</th><th>Motivo</th><th>Estado</th><th>Quién</th><th></th></tr></thead><tbody>
+  ${L.map(x=>`<tr><td class="mono"><span class="chip ${x.estado==='Listo para entregar'?'ok':x.dias>=ING_CRITICO?'bad':x.dias>=ING_ALERTA?'warn':'na'}">${x.dias} d</span></td><td class="mono">${fmt(pd(x.fecha))}</td><td>${esc(x.cliente||'')}</td><td>${x.prioridad==='Urgente'?'<span class="chip bad">Urgente</span> ':''}${esc(x.equipo||'')}</td><td class="mono">${esc(x.serie||'')}</td><td>${esc(x.motivo||'')}</td><td>${esc(x.estado||'Ingresado')}</td><td>${esc(x.responsable||'')}</td><td><button class="btn small" data-edit="ing:${esc(x.id)}">Editar</button></td></tr>`).join('')||'<tr><td colspan="9" class="empty">No hay equipos en el taller. Cargá cada uno que entra con "+ Ingreso".</td></tr>'}
+  </tbody></table></div>`;
+}
 const DIAS=['dom','lun','mar','mié','jue','vie','sáb'];
 const mismoCliente=(a,b)=>{ const x=slug(a), y=slug(b); return !!x && !!y && (x===y || x.includes(y) || y.includes(x)); };
 const fdia=s=>{ const d=pd(s); return d?DIAS[d.getDay()]+' '+fmt(d).slice(0,5):''; };
@@ -337,10 +364,12 @@ function vAgenda(){
 const FORMS={
   vis:['Visita',[['fecha','Fecha','date'],['hora','Hora (opcional)','time'],['tecnico','Técnico','sel:'+TECNICOS.join('|')],['cliente','Cliente','cli'],['tareas','Qué va a hacer (ej. centrífugas, preventivo heladera)','text'],['notas','Notas','area'],['hecho','Visita hecha','check']]],
   ent:['Para llevar / retirar',[['tipo','Tipo','sel:Entregar|Retirar|Llevar material'],['cliente','Cliente','cli'],['que','Qué (ej. 5 termómetros calibrados)','text'],['responsable','Quién lo tiene / lo preparó','sel:'+TECNICOS.join('|')],['notas','Notas','area']]],
+  tar:['Tarea',[['texto','Qué hay que hacer (ej. Centrífuga caseros, revisar cierre)','text'],['cliente','Cliente (opcional)','cli'],['responsable','Quién','sel:|'+TECNICOS.join('|')],['para','Para cuándo','date'],['prioridad','Prioridad','sel:Normal|Urgente'],['notas','Notas','area']]],
+  ing:['Ingreso al taller',[['fecha','Fecha de ingreso','date'],['cliente','Cliente','cli'],['equipo','Equipo (ej. micropipeta Gilson multicanal)','text'],['serie','ID / N° de serie','text'],['motivo','Motivo (calibración, reparación…)','text'],['responsable','Quién lo tiene','sel:|'+TECNICOS.join('|')],['prioridad','Prioridad','sel:Normal|Urgente'],['estado','Estado','sel:Ingresado|En revisión|Esperando repuesto|Listo para entregar|Entregado'],['notas','Notas','area']]],
   rec:['Recordatorio',[['texto','Recordarme…','text'],['cuando','Cuándo','datetime-local'],['para','Para quién','sel:Todos|'+TECNICOS.join('|')],['repetir','Repetir','sel:|cada semana|cada mes|cada año'],['notas','Notas','area']]]
 };
 function editar(col,id){
-  const [tit,campos]=FORMS[col], x=id?(({vis:S.vis,ent:S.ent,rec:S.rec})[col][id]||{}):{};
+  const [tit,campos]=FORMS[col], x=id?(S[col][id]||{}):{};
   const clis=[...new Set([...all().map(r=>r.cliente),...S.trab.map(t=>t.cliente),...Object.values(S.vis).map(v=>v.cliente),...Object.values(S.ent).map(e=>e.cliente)].filter(Boolean))].sort();
   drawer(`<div class="eyebrow">${id?'Editar':'Nuevo'}</div><h2>${tit}</h2><form class="form" id="fa">
     ${campos.map(([k,l,t])=>`<div class="field ${t==='area'||k==='texto'||k==='que'||k==='tareas'?'full':''}"><label for="a-${k}">${l}</label>${
@@ -355,15 +384,19 @@ function editar(col,id){
     if(col==='vis'&&(!o.fecha||!o.cliente)){ toast('Poné fecha y cliente'); return; }
     if(col==='ent'&&(!o.cliente||!o.que)){ toast('Poné cliente y qué hay que llevar'); return; }
     if(col==='rec'&&!o.texto){ toast('Escribí el recordatorio'); return; }
+    if(col==='tar'&&!o.texto){ toast('Escribí la tarea'); return; }
+    if(col==='ing'&&(!o.cliente||!o.equipo)){ toast('Poné cliente y equipo'); return; }
     if(col==='ent'&&!id){ o.estado='pendiente'; o.creado=iso(HOY); } if(col==='rec'&&!id) o.estado='activo';
+    if(col==='tar'&&!id){ o.estado='pendiente'; o.creado=iso(HOY); }
+    if(col==='ing'&&o.estado!==x.estado) o.estado_desde=iso(HOY);
     if(col==='rec'&&o.cuando!==x.cuando) o.pospuesto_hasta=null;
     await guardar(col,id||(Date.now().toString(36)+Math.random().toString(36).slice(2,6)),o); $('#overlay').innerHTML=''; };
   const del=$('#a-del'); if(del) del.onclick=async()=>{ if(!confirm('¿Borrar?')) return; await guardar(col,id,Object.assign({},x,{estado:'hecho',borrado:true,hecho:true})); $('#overlay').innerHTML=''; };
 }
 async function guardar(col,id,o){
   if(!S.db){ toast('Para guardar tenés que entrar con tu usuario'); return; }
-  const key={vis:'visitas',ent:'entregas',rec:'recordatorios'}[col];
-  try{ await S.db.doc(key+'/'+id).set(o); ({vis:S.vis,ent:S.ent,rec:S.rec})[col][id]=o; render(); toast('Guardado'); }
+  const key=COLS[col];
+  try{ await S.db.doc(key+'/'+id).set(o); S[col][id]=o; render(); toast('Guardado'); }
   catch(e){ toast('No se pudo guardar. Probá de nuevo.'); }
 }
 
@@ -472,6 +505,12 @@ function avisos(){
   if(pr.length) A.push({tipo:'warn',txt:`Calibrar equipos propios: ${pr.map(p=>p.id).join(', ')} (${pr[0].dias<0?'vencidos':'vencen el '+fmt(pr[0].prox)})`,go:'prestamos'});
   const V=vencimientos().filter(x=>x.prox.getFullYear()===y&&x.prox.getMonth()===m);
   cnt(V,x=>x.cliente).forEach(([c,n])=>A.push({tipo:'acc',txt:`Avisar a ${c}: este mes le tocan ${n} equipo${n>1?'s':''} (${cnt(V.filter(x=>x.cliente===c),x=>x.area).map(([a,k])=>k+' '+a.toLowerCase()+(k>1?'s':'')).join(', ')})`,go:'pendientes'}));
+  const at=ingresosAbiertos().filter(x=>x.dias>=ING_CRITICO&&x.estado!=='Listo para entregar');
+  if(at.length) A.push({tipo:'bad',txt:`${at.length} equipo${at.length>1?'s':''} atascado${at.length>1?'s':''} en el taller hace más de ${ING_CRITICO} días: ${at.slice(0,4).map(x=>x.cliente+' '+(x.equipo||'')).join(', ')}${at.length>4?'…':''}`,go:'ingresos'});
+  const listos=ingresosAbiertos().filter(x=>x.estado==='Listo para entregar');
+  if(listos.length) A.push({tipo:'ok',txt:`Listos para entregar: ${listos.map(x=>x.cliente+' '+(x.equipo||'')).join(', ')}`,go:'ingresos'});
+  const hoyI=iso(HOY), tu=Object.values(S.tar).filter(t=>t.estado!=='hecho'&&!t.borrado&&(t.prioridad==='Urgente'||(t.para&&t.para<=hoyI)));
+  tu.forEach(t=>A.push({tipo:t.prioridad==='Urgente'?'bad':'warn',txt:`Tarea${t.responsable?' de '+t.responsable:''}: ${t.texto}${t.para?' (para el '+fdia(t.para)+')':''}`,go:'tareas'}));
   const sinVisita=entregasPend().filter(e=>!visitasProx(60).some(v=>mismoCliente(v.cliente,e.cliente)));
   sinVisita.forEach(e=>A.push({tipo:'bad',txt:`${e.tipo||'Entregar'} en ${e.cliente}: ${e.que} — no hay ninguna visita programada`,go:'agenda'}));
   return A;
@@ -706,7 +745,7 @@ function bind(){
   M.querySelectorAll('[data-wamsg]').forEach(b=>b.onclick=e=>{ e.preventDefault(); window.open('https://wa.me/?text='+encodeURIComponent(S._msgs[b.dataset.wamsg]),'_blank'); });
   M.querySelectorAll('[data-pnew]').forEach(b=>b.onclick=()=>editarPrest(null));
   M.querySelectorAll('[data-pedit]').forEach(b=>b.onclick=()=>editarPrest(b.dataset.pedit));
-  const COL={vis:S.vis,ent:S.ent,rec:S.rec};
+  const COL={vis:S.vis,ent:S.ent,rec:S.rec,tar:S.tar,ing:S.ing};
   M.querySelectorAll('[data-new]').forEach(b=>b.onclick=()=>editar(b.dataset.new,null));
   M.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{ const [c,id]=b.dataset.edit.split(':'); editar(c,id); });
   M.querySelectorAll('[data-done]').forEach(b=>b.onclick=()=>{ const [c,id]=b.dataset.done.split(':'); const x=COL[c][id];
@@ -775,7 +814,7 @@ async function arrancar(){
   escucharAgenda();
 }
 function escucharAgenda(){
-  [['visitas','vis'],['entregas','ent'],['recordatorios','rec'],['prestamos','prest']].forEach(([c,k])=>S.db.collection(c).onSnapshot(s=>{
+  [['visitas','vis'],['entregas','ent'],['recordatorios','rec'],['prestamos','prest'],['tareas','tar'],['ingresos','ing']].forEach(([c,k])=>S.db.collection(c).onSnapshot(s=>{
     const o={}; s.docs.forEach(d=>{ const x=d.data(); if(!x.borrado) o[d.id]=x; }); S[k]=o; if(!$('#overlay').innerHTML) render(); }, ()=>{}));
 }
 // Base en memoria para probar en la compu sin login (?local). No guarda nada de verdad.
