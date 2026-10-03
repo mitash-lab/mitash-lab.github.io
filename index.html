@@ -1020,7 +1020,7 @@ async function arrancar(){
   $('#userbox').hidden=false; $('#useremail').textContent=session?session.user.email:'';
   $('#logout').onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
   $('#main').innerHTML='<p class="empty">Cargando informes…</p>';
-  try{ [S.base,S.trab,S.term]=await Promise.all([cargarTabla('informes'),cargarTabla('trabajos'),cargarTabla('termometros')]); }catch(e){ $('#main').innerHTML='<div class="banner">No se pudieron cargar los informes. Revisá la conexión y recargá la página.</div>'; return; }
+  try{ [S.base,S.trab,S.term]=await Promise.all([cargarTabla('informes'),cargarTabla('trabajos'),cargarTabla('termometros')]); S.trab=S.trab.filter(t=>!t.reemplazado); }catch(e){ $('#main').innerHTML='<div class="banner">No se pudieron cargar los informes. Revisá la conexión y recargá la página.</div>'; return; }
   S.db=supaDB(); S.dbChecked=true;
   if(!S.base.length && !S.trab.length) S.view='importar'; // base vacía: primero cargar los datos
   render();
