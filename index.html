@@ -696,7 +696,9 @@ function bind(){
 // ---- Base de datos: Supabase (login del equipo). Los datos de clientes viven solo ahí, nunca en el código público.
 const SB_URL='https://wjebfabcivxmeohyfpxm.supabase.co';
 const SB_KEY='sb_publishable_OwWLV4rfTm58MB7rouvJnw_TDEBfU6J';
-const sb = window.supabase ? window.supabase.createClient(SB_URL,SB_KEY) : null;
+// lock simple: el lock por defecto (navigator.locks) se cuelga en algunos navegadores de iPhone y la app quedaba en "Cargando…"
+const sb = window.supabase ? window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,lock:async(_n,_t,fn)=>await fn()}}) : null;
+const conTiempo=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('tiempo')),ms))]);
 
 // Misma forma que usaba la versión anterior: db.doc('coleccion/id').set(obj) y db.collection(c).onSnapshot(cb).
 function supaDB(){
@@ -726,14 +728,14 @@ function vLogin(msg){
     <div class="err" id="lerr">${esc(msg||'')}</div>
     <button class="btn primary" type="submit">Entrar</button></form>`;
   $('#flogin').onsubmit=async e=>{ e.preventDefault(); $('#lerr').textContent='Entrando…';
-    const {error}=await sb.auth.signInWithPassword({email:$('#lemail').value.trim(),password:$('#lpass').value});
-    if(error){ $('#lerr').textContent='Email o contraseña incorrectos.'; return; }
+    let error; try{ ({error}=await conTiempo(sb.auth.signInWithPassword({email:$('#lemail').value.trim(),password:$('#lpass').value}),15000)); }catch(e){ error=e; }
+    if(error){ $('#lerr').textContent=error.message==='tiempo'?'No responde el servidor. Revisá internet y probá de nuevo.':'Email o contraseña incorrectos.'; return; }
     L.hidden=true; arrancar(); };
 }
 async function arrancar(){
   document.querySelector('.app').hidden=false;
   const {data:{session}}=await sb.auth.getSession();
-  $('#userbox').hidden=false; $('#useremail').textContent=session.user.email;
+  $('#userbox').hidden=false; $('#useremail').textContent=session?session.user.email:'';
   $('#logout').onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
   $('#main').innerHTML='<p class="empty">Cargando informes…</p>';
   try{ [S.base,S.trab,S.term]=await Promise.all([cargarTabla('informes'),cargarTabla('trabajos'),cargarTabla('termometros')]); }catch(e){ $('#main').innerHTML='<div class="banner">No se pudieron cargar los informes. Revisá la conexión y recargá la página.</div>'; return; }
@@ -761,8 +763,9 @@ async function init(){
     for(const p of await (await fetch('prestamos.json')).json()) await S.db.doc('prestamos/'+p.id.replace(/\s+/g,'')).set(p);
     escucharAgenda(); render(); return;
   }
-  if(!sb){ $('#main').innerHTML='<div class="banner">No hay conexión a internet. Probá de nuevo en un rato.</div>'; return; }
-  const {data:{session}}=await sb.auth.getSession();
+  if(!sb){ $('#main').innerHTML='<div class="banner">No se pudo conectar. Revisá internet y recargá la página.</div>'; return; }
+  let session=null;
+  try{ ({data:{session}}=await conTiempo(sb.auth.getSession(),5000)); }catch(e){ session=null; }
   if(session) arrancar(); else vLogin();
 }
 if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
