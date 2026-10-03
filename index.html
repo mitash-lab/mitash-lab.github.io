@@ -128,6 +128,7 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--surface-2)}
     <button class="navbtn" data-view="ingresos">Ingresos al taller</button>
     <button class="navbtn" data-view="pendientes">Para hacer (vencimientos)</button>
     <button class="navbtn" data-view="prestamos">Termómetros Mitash</button>
+    <button class="navbtn" data-view="pagos">Pagos (Meli y Jorge)</button>
     <button class="navbtn" data-view="tablero">Tablero general</button>
     <button class="navbtn" data-view="calendario">Vencimientos</button>
     <div class="navgroup">Micropipetas</div>
@@ -162,7 +163,7 @@ window.addEventListener('unhandledrejection',e=>{ const m=document.getElementByI
 const HOY = new Date(); HOY.setHours(0,0,0,0);
 const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const MES3=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-const S={base:[],trab:[],term:[],prest:{},vis:{},ent:{},rec:{},tar:{},ing:{},ft:{q:'',area:'',anio:'',cliente:''},over:{},clientes:{},view:'agenda',db:null,f:{q:'',anio:'',cliente:'',res:'',fac:''},page:0,calTab:'prox',pcAnio:String(new Date().getFullYear()),stAnio:String(new Date().getFullYear())};
+const S={base:[],trab:[],term:[],prest:{},vis:{},ent:{},rec:{},tar:{},ing:{},pag:{},avp:{},ft:{q:'',area:'',anio:'',cliente:''},over:{},clientes:{},view:'agenda',db:null,f:{q:'',anio:'',cliente:'',res:'',fac:''},page:0,calTab:'prox',pcAnio:String(new Date().getFullYear()),stAnio:String(new Date().getFullYear())};
 try{ const v=localStorage.getItem('mitash.view'); if(v) S.view=v; }catch(e){}
 const $=s=>document.querySelector(s);
 const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -208,6 +209,7 @@ function render(){
   const warn = S.db===null && S.dbChecked ? '<div class="banner">En esta vista los cambios no se guardan (la base compartida no está disponible). Podés consultar todo igual.</div>' : '';
   if(v==='agenda') M.innerHTML=warn+vAgenda();
   else if(v==='tareas') M.innerHTML=warn+vTareas();
+  else if(v==='pagos') M.innerHTML=warn+vPagos();
   else if(v==='ingresos') M.innerHTML=warn+vIngresos();
   else if(v==='tablero') M.innerHTML=warn+vTablero();
   else if(v==='trabajos'||v.startsWith('area:')) M.innerHTML=warn+vTrab();
@@ -308,7 +310,28 @@ function vCal(){
 // ---- Agenda: visitas (cronograma), cosas para llevar/retirar y recordatorios.
 // Clave del sistema: si hay una visita programada a un cliente que tiene algo pendiente de entregar, avisar "aprovechar viaje".
 const TECNICOS=['Melina','Jorge','Lucho','Maxi','Claudio'];
-const COLS={vis:'visitas',ent:'entregas',rec:'recordatorios',tar:'tareas',ing:'ingresos',prest:'prestamos'}; // clave corta en S -> colección
+const COLS={vis:'visitas',ent:'entregas',rec:'recordatorios',tar:'tareas',ing:'ingresos',prest:'prestamos',pag:'pagos',avp:'avisos'};
+// ---- Pagos de Meli y Jorge: se cobra por unidad, a cada uno ($1.500 micropipeta, $3.000 termómetro). Desde agosto 2025.
+const TARIFA={'Micropipeta':1500,'Termómetro':3000}, PAGOS_DESDE='2025-08-01';
+const plata=n=>'$'+Math.round(n).toLocaleString('es-AR');
+function vPagos(){
+  const L=Object.values(S.pag).filter(r=>(r.fecha||'')>=PAGOS_DESDE||String(r.certificado||'').slice(0,6)>='250801');
+  const imp=L.filter(r=>/^impago/i.test(r.pago||'')), pag=L.filter(r=>/^pago/i.test(r.pago||''));
+  const u=(R,t)=>R.filter(r=>r.tipo===t).reduce((s,r)=>s+(r.unidades||1),0);
+  const deuda=Object.keys(TARIFA).reduce((s,t)=>s+u(imp,t)*TARIFA[t],0);
+  const enLista=new Set(Object.values(S.pag).map(r=>String(r.certificado||'').match(/^\s*(\d{6})\s*-\s*(\d+)/)).filter(Boolean).map(m=>m[1]+'-'+Number(m[2])));
+  const faltan=all().filter(r=>r.fecha>=PAGOS_DESDE&&!/mitash/i.test(r.cliente||'')&&!enLista.has(r.informe));
+  return `<div class="head"><div style="flex:1;min-width:200px"><div class="eyebrow">Meli y Jorge · $1.500 por micropipeta y $3.000 por termómetro, a cada uno · desde agosto 2025</div><h1>Pagos</h1></div></div>
+  <section class="kpis">
+    <div class="kpi bad"><div class="l">Le deben a cada uno</div><div class="v">${plata(deuda)}</div><div class="n">${u(imp,'Micropipeta')} micropipetas · ${u(imp,'Termómetro')} termómetros impagos</div></div>
+    <div class="kpi"><div class="l">Ya cobrado (cada uno)</div><div class="v">${plata(Object.keys(TARIFA).reduce((s,t)=>s+u(pag,t)*TARIFA[t],0))}</div><div class="n">${u(pag,'Micropipeta')} micros · ${u(pag,'Termómetro')} termómetros</div></div>
+    <div class="kpi warn"><div class="l">Hechas y NO cargadas en la lista</div><div class="v">${faltan.length}</div><div class="n">Informes que faltan en la lista de pagos</div></div>
+  </section>
+  ${faltan.length?`<div class="card" style="border-color:var(--warn-fg)"><h2>Faltan en la lista de pagos</h2><div class="list">${faltan.map(r=>`<div class="row"><span class="mono">${esc(r.informe)}</span><span class="grow">${esc(r.cliente||'')} · ${esc(r.id||'')}${r.canales?' · '+r.canales+' canales':''}</span><span class="mono">${fmt(pd(r.fecha))}</span></div>`).join('')}</div></div>`:''}
+  <div class="card"><h2>Impagas (${imp.length})</h2><div class="tablewrap"><table><thead><tr><th>Certificado</th><th>Tipo</th><th>Cliente</th><th>SN / ID</th><th>Fecha</th><th>Unidades</th><th>A cobrar c/u</th></tr></thead><tbody>
+  ${imp.sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||'')).map(r=>`<tr><td class="mono">${esc(r.certificado)}</td><td>${esc(r.tipo)}</td><td>${esc(r.cliente||'')}</td><td class="mono">${esc(r.sn||r.codigo||'')}</td><td class="mono">${r.fecha?fmt(pd(r.fecha)):''}</td><td class="mono">${r.unidades||1}</td><td class="mono">${plata((r.unidades||1)*TARIFA[r.tipo])}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">No hay nada impago.</td></tr>'}
+  </tbody></table></div></div>`;
+} // clave corta en S -> colección
 // ---- Tareas: reemplaza la lista de pendientes que Claudio fija y reenvía en el grupo "Solicitudes".
 function vTareas(){
   const L=Object.entries(S.tar).map(([id,t])=>({id,...t})).filter(t=>t.estado!=='hecho'&&!t.borrado)
@@ -348,7 +371,7 @@ function vAgenda(){
   const porCli={}; E.forEach(e=>(porCli[e.cliente||'(sin cliente)']=porCli[e.cliente||'(sin cliente)']||[]).push(e));
   return `<div class="head"><div style="flex:1;min-width:200px"><div class="eyebrow">${HOY.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div><h1>Agenda y recordatorios</h1></div>
     <button class="btn primary" data-new="vis">+ Visita</button><button class="btn" data-new="ent">+ Para llevar/retirar</button><button class="btn" data-new="rec">+ Recordatorio</button></div>
-  ${(()=>{const AV=avisos(); return AV.length?`<div class="card"><h2>🔔 Avisos automáticos</h2><div class="list">${AV.map(a=>`<div class="row"><span class="chip ${a.tipo}" style="min-width:10px">&nbsp;</span><span class="grow">${esc(a.txt)}</span><button class="btn small" data-go="${a.go}">Ver</button></div>`).join('')}</div></div>`:''})()}
+  ${(()=>{const now=ahoraISO(); const AV=avisos().map(a=>({...a,k:slug(a.txt).slice(0,80)})).filter(a=>!(S.avp[a.k]&&S.avp[a.k].hasta>now)); return AV.length?`<div class="card"><h2>🔔 Avisos automáticos</h2><div class="list">${AV.map(a=>`<div class="row" style="flex-wrap:wrap"><span class="chip ${a.tipo}" style="min-width:10px">&nbsp;</span><span class="grow" style="min-width:180px">${esc(a.txt)}</span><button class="btn small" data-go="${a.go}">Ver</button><button class="btn small" data-avsnooze="${esc(a.k)}:6">Posponer 6 h</button><button class="btn small" data-avsnooze="${esc(a.k)}:24">1 día</button></div>`).join('')}</div></div>`:''})()}
   ${A.length?`<div class="card" style="border-color:var(--warn-fg);background:var(--warn-bg)"><h2 style="color:var(--warn-fg)">🚗 Aprovechar viaje</h2><div class="list">${A.map(({v,items})=>`<div class="row" style="align-items:flex-start"><div class="grow"><strong>${esc(v.tecnico||'Alguien')} va a ${esc(v.cliente)} el ${fdia(v.fecha)}${v.hora?' '+esc(v.hora):''}</strong>
     <div>${items.map(e=>`→ ${esc(e.tipo||'Entregar')}: ${esc(e.que)}${e.responsable?` <span class="eyebrow">(lo tiene ${esc(e.responsable)})</span>`:''}`).join('<br>')}</div></div><button class="btn small" data-edit="vis:${esc(v.id)}">Ver visita</button></div>`).join('')}</div></div>`:''}
   <section class="grid2">
@@ -743,6 +766,9 @@ function bind(){
   M.querySelectorAll('[data-parea]').forEach(b=>b.onclick=()=>{S.pendArea=b.dataset.parea;render();});
   M.querySelectorAll('[data-copymsg]').forEach(b=>b.onclick=async e=>{ e.preventDefault(); try{ await navigator.clipboard.writeText(S._msgs[b.dataset.copymsg]); toast('Mensaje copiado'); }catch(err){ prompt('Copiá el mensaje:',S._msgs[b.dataset.copymsg]); } });
   M.querySelectorAll('[data-wamsg]').forEach(b=>b.onclick=e=>{ e.preventDefault(); window.open('https://wa.me/?text='+encodeURIComponent(S._msgs[b.dataset.wamsg]),'_blank'); });
+  M.querySelectorAll('[data-avsnooze]').forEach(b=>b.onclick=async()=>{ const [k,h]=b.dataset.avsnooze.split(':'); const d=new Date(Date.now()+Number(h)*3600000); d.setMinutes(d.getMinutes()-d.getTimezoneOffset());
+    if(!S.db){ toast('Para guardar tenés que entrar con tu usuario'); return; }
+    const o={hasta:d.toISOString().slice(0,16)}; try{ await S.db.doc('avisos/'+k).set(o); S.avp[k]=o; render(); toast(Number(h)===6?'Pospuesto 6 horas':'Pospuesto 1 día'); }catch(e){ toast('No se pudo guardar'); } });
   M.querySelectorAll('[data-pnew]').forEach(b=>b.onclick=()=>editarPrest(null));
   M.querySelectorAll('[data-pedit]').forEach(b=>b.onclick=()=>editarPrest(b.dataset.pedit));
   const COL={vis:S.vis,ent:S.ent,rec:S.rec,tar:S.tar,ing:S.ing};
@@ -814,7 +840,7 @@ async function arrancar(){
   escucharAgenda();
 }
 function escucharAgenda(){
-  [['visitas','vis'],['entregas','ent'],['recordatorios','rec'],['prestamos','prest'],['tareas','tar'],['ingresos','ing']].forEach(([c,k])=>S.db.collection(c).onSnapshot(s=>{
+  [['visitas','vis'],['entregas','ent'],['recordatorios','rec'],['prestamos','prest'],['tareas','tar'],['ingresos','ing'],['pagos','pag'],['avisos','avp']].forEach(([c,k])=>S.db.collection(c).onSnapshot(s=>{
     const o={}; s.docs.forEach(d=>{ const x=d.data(); if(!x.borrado) o[d.id]=x; }); S[k]=o; if(!$('#overlay').innerHTML) render(); }, ()=>{}));
 }
 // Base en memoria para probar en la compu sin login (?local). No guarda nada de verdad.
@@ -828,6 +854,7 @@ async function init(){
     S.term=await (await fetch('termometros.json')).json();
     S.db=memDB(); S.dbChecked=true;
     for(const p of await (await fetch('prestamos.json')).json()) await S.db.doc('prestamos/'+p.id.replace(/\s+/g,'')).set(p);
+    try{ for(const p of await (await fetch('pagos.json')).json()) await S.db.doc('pagos/'+p.id).set(p); }catch(e){}
     escucharAgenda(); render(); return;
   }
   if(!sb){ $('#main').innerHTML='<div class="banner">No se pudo conectar. Revisá internet y recargá la página.</div>'; return; }
