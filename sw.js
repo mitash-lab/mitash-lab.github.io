@@ -1,6 +1,6 @@
 // Service worker mínimo: permite instalar la web como app y abrirla aunque la señal sea mala.
-// Siempre intenta la red primero (para tener la última versión) y usa la copia guardada si no hay conexión.
-const CACHE = 'mitash-v2';
+// Siempre pide la versión nueva a la red (sin caché del navegador) y usa la copia guardada solo si no hay conexión.
+const CACHE = 'mitash-v3';
 const BASICOS = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -13,7 +13,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return; // Supabase y CDN van directo
-  e.respondWith(fetch(e.request).then(r => {
+  e.respondWith(fetch(e.request, { cache: 'no-store' }).then(r => {
     const copia = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copia)); return r;
   }).catch(() => caches.match(e.request)));
 });
