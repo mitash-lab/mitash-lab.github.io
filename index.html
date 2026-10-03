@@ -149,6 +149,7 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--surface-2)}
     <button class="navbtn" data-view="soon-equipos">Equipos propios<span class="soon">pronto</span></button>
     <button class="navbtn" data-view="soon-bot">Bot de WhatsApp<span class="soon">pronto</span></button>
     <button class="navbtn" data-view="importar">Importar datos</button>
+    <button class="navbtn" data-view="bitacora">Bitácora del sistema</button>
     <div class="userbox" id="userbox" hidden><span id="useremail"></span><button class="navbtn" id="logout">Cerrar sesión</button></div>
   </nav>
   <main id="main"><p class="empty">Cargando… (v3)</p></main>
@@ -210,6 +211,7 @@ function render(){
   if(v==='agenda') M.innerHTML=warn+vAgenda();
   else if(v==='tareas') M.innerHTML=warn+vTareas();
   else if(v==='pagos') M.innerHTML=warn+vPagos();
+  else if(v==='bitacora') M.innerHTML=vBitacora();
   else if(v==='ingresos') M.innerHTML=warn+vIngresos();
   else if(v==='tablero') M.innerHTML=warn+vTablero();
   else if(v==='trabajos'||v.startsWith('area:')) M.innerHTML=warn+vTrab();
@@ -311,6 +313,35 @@ function vCal(){
 // Clave del sistema: si hay una visita programada a un cliente que tiene algo pendiente de entregar, avisar "aprovechar viaje".
 const TECNICOS=['Melina','Jorge','Lucho','Maxi','Claudio'];
 const COLS={vis:'visitas',ent:'entregas',rec:'recordatorios',tar:'tareas',ing:'ingresos',prest:'prestamos',pag:'pagos',avp:'avisos'};
+// ---- Bitácora: lo que pidió el equipo (sobre todo Claudio, en los grupos de WhatsApp) y en qué está. Pedido de Claudio del 30/9.
+const BITACORA=[
+  ['hecho','Qué cliente toca cada mes, con IDs y mensaje armado para el cliente','Claudio 29/6 y 30/9'],
+  ['hecho','Ingresos al taller con contador de días y alarma si se atasca','Claudio 1/10'],
+  ['hecho','Prioridad urgente en ingresos y tareas (ej. ANMAT antes que Durand)','Claudio 17/7'],
+  ['hecho','Termómetros Mitash: dónde quedó cada uno y cuándo se calibran','Claudio 21/8, Meli'],
+  ['hecho','Tareas pendientes (reemplaza el mensaje fijado de Solicitudes)','grupo Solicitudes'],
+  ['hecho','Agenda con "aprovechar viaje"','Meli (caso Maipú)'],
+  ['hecho','Recordatorios y avisos con posponer 6 h / 1 día','Meli'],
+  ['hecho','Lista de IDs por ingreso que se tacha sola + remito de devolución','Meli'],
+  ['hecho','Pagos de Meli y Jorge (impagos y faltantes en la lista)','Meli'],
+  ['hecho','Bitácora de pedidos (esta pantalla)','Claudio 30/9'],
+  ['falta','Bot de WhatsApp: carga por mensaje/audio y mensaje diario por persona','todos'],
+  ['falta','Avisar apenas llegan equipos al taller','Claudio 29/6'],
+  ['falta','Informes de correctivo automáticos: foto + texto → informe con firma → carpeta del Drive','Claudio 1/10'],
+  ['falta','Informes de micropipetas y termómetros desde la foto de la toma de datos','Meli'],
+  ['falta','Buscar y mandar certificados ("pasame el de IA-586")','Claudio 16/6 y 10/8'],
+  ['falta','Préstamo de micropipetas (lista actualizada para prestar al Durand)','Claudio 29/6'],
+  ['falta','Etiqueta propia para equipos calificados por terceros / plancha de etiquetas','Claudio 27/8'],
+  ['falta','Estado de presupuestos (ej. cabina "a espera de aprobación de pago")','Maxi 1/6'],
+  ['falta','Cargar cronogramas de visitas de cada técnico','Meli'],
+  ['después','Estadísticas para la acreditación','Claudio 30/9'],
+];
+function vBitacora(){
+  const g={hecho:'✅ Hecho',falta:'⏳ En camino',después:'🗓️ Más adelante'};
+  return `<div class="head"><div style="flex:1;min-width:200px"><div class="eyebrow">Lo que se le pidió al sistema y en qué está</div><h1>Bitácora del sistema</h1></div></div>
+  ${Object.entries(g).map(([k,t])=>`<div class="card"><h2>${t}</h2><div class="list">${BITACORA.filter(b=>b[0]===k).map(b=>`<div class="row"><span class="grow">${esc(b[1])}</span><span class="eyebrow">${esc(b[2])}</span></div>`).join('')}</div></div>`).join('')}`;
+}
+
 // ---- Pagos de Meli y Jorge: se cobra por unidad, a cada uno ($1.500 micropipeta, $3.000 termómetro). Desde agosto 2025.
 const TARIFA={'Micropipeta':1500,'Termómetro':3000}, PAGOS_DESDE='2025-08-01';
 const plata=n=>'$'+Math.round(n).toLocaleString('es-AR');
