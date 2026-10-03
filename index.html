@@ -321,6 +321,7 @@ function vAgenda(){
   const porCli={}; E.forEach(e=>(porCli[e.cliente||'(sin cliente)']=porCli[e.cliente||'(sin cliente)']||[]).push(e));
   return `<div class="head"><div style="flex:1;min-width:200px"><div class="eyebrow">${HOY.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'})}</div><h1>Agenda y recordatorios</h1></div>
     <button class="btn primary" data-new="vis">+ Visita</button><button class="btn" data-new="ent">+ Para llevar/retirar</button><button class="btn" data-new="rec">+ Recordatorio</button></div>
+  ${(()=>{const AV=avisos(); return AV.length?`<div class="card"><h2>🔔 Avisos automáticos</h2><div class="list">${AV.map(a=>`<div class="row"><span class="chip ${a.tipo}" style="min-width:10px">&nbsp;</span><span class="grow">${esc(a.txt)}</span><button class="btn small" data-go="${a.go}">Ver</button></div>`).join('')}</div></div>`:''})()}
   ${A.length?`<div class="card" style="border-color:var(--warn-fg);background:var(--warn-bg)"><h2 style="color:var(--warn-fg)">🚗 Aprovechar viaje</h2><div class="list">${A.map(({v,items})=>`<div class="row" style="align-items:flex-start"><div class="grow"><strong>${esc(v.tecnico||'Alguien')} va a ${esc(v.cliente)} el ${fdia(v.fecha)}${v.hora?' '+esc(v.hora):''}</strong>
     <div>${items.map(e=>`→ ${esc(e.tipo||'Entregar')}: ${esc(e.que)}${e.responsable?` <span class="eyebrow">(lo tiene ${esc(e.responsable)})</span>`:''}`).join('<br>')}</div></div><button class="btn small" data-edit="vis:${esc(v.id)}">Ver visita</button></div>`).join('')}</div></div>`:''}
   <section class="grid2">
@@ -453,7 +454,28 @@ async function importar(){
 
 // ---- "Para hacer": TODO lo que vence (micropipetas cada 1 año; termómetros cada 6 meses en Maipú, 1 año el resto).
 // Frecuencia en meses según área y cliente. Los equipos propios de Mitash no se cuentan.
-const FREQ=(area,cli)=> area==='Termómetro' && /maip/i.test(cli||'') ? 6 : 12;
+const FREQ=(area,cli)=> area==='Termómetro' && /maip/i.test(cli||'') ? 6 : 12; // centrífugas: 12 hasta que confirmen
+// Equipos propios de Mitash (termómetros M-x): último certificado y próxima calibración (1 año). Aviso 14 días antes.
+function propios(){
+  const g=new Map();
+  S.term.filter(t=>t.propio&&t.id).forEach(t=>{ const k=normId(t.id); const c=g.get(k); if(!c||t.fecha>c.fecha) g.set(k,t); });
+  const ids=new Set([...Object.values(S.prest).map(p=>normId(p.id)),...g.keys()]);
+  return [...ids].map(k=>{ const p=Object.entries(S.prest).find(([,x])=>normId(x.id)===k)||[k.replace(/^M(\d)/,'M-$1'),{id:k.replace(/^M(\d)/,'M-$1')}];
+    const t=g.get(k); const ult=t?pd(t.fecha):null; const prox=ult?addM(ult,12):null;
+    return {k:p[0],...p[1],cert:t?t.informe:(p[1].certificado||''),ult,prox,dias:prox?days(prox,HOY):null}; })
+    .sort((a,b)=>(parseInt(String(a.id).replace(/\D/g,''))||0)-(parseInt(String(b.id).replace(/\D/g,''))||0));
+}
+// Avisos automáticos: lo mismo que después manda el bot por WhatsApp.
+function avisos(){
+  const A=[], y=HOY.getFullYear(), m=HOY.getMonth();
+  const pr=propios().filter(p=>p.dias!=null&&p.dias<=14);
+  if(pr.length) A.push({tipo:'warn',txt:`Calibrar equipos propios: ${pr.map(p=>p.id).join(', ')} (${pr[0].dias<0?'vencidos':'vencen el '+fmt(pr[0].prox)})`,go:'prestamos'});
+  const V=vencimientos().filter(x=>x.prox.getFullYear()===y&&x.prox.getMonth()===m);
+  cnt(V,x=>x.cliente).forEach(([c,n])=>A.push({tipo:'acc',txt:`Avisar a ${c}: este mes le tocan ${n} equipo${n>1?'s':''} (${cnt(V.filter(x=>x.cliente===c),x=>x.area).map(([a,k])=>k+' '+a.toLowerCase()+(k>1?'s':'')).join(', ')})`,go:'pendientes'}));
+  const sinVisita=entregasPend().filter(e=>!visitasProx(60).some(v=>mismoCliente(v.cliente,e.cliente)));
+  sinVisita.forEach(e=>A.push({tipo:'bad',txt:`${e.tipo||'Entregar'} en ${e.cliente}: ${e.que} — no hay ninguna visita programada`,go:'agenda'}));
+  return A;
+}
 const addM=(d,n)=>new Date(d.getFullYear(),d.getMonth()+n,d.getDate());
 function vencimientos(){
   const out=[];
@@ -461,6 +483,10 @@ function vencimientos(){
     out.push({area:'Micropipeta',id:p.id,cliente:p.cliente||'(sin cliente)',sede:r.sector||'',detalle:[r.codigo_cliente,r.marca,vol(r)].filter(Boolean).join(' · '),ult:p.ult,informe:p.informe}); });
   const g=new Map(); S.term.forEach(t=>{ if(t.propio||!t.id) return; const k=normId(t.id)+'|'+slug(t.cliente); const d=pd(t.fecha); const c=g.get(k); if(!c||d>c.ult) g.set(k,{t,ult:d}); });
   g.forEach(({t,ult})=>out.push({area:'Termómetro',id:t.id,cliente:t.cliente||'(sin cliente)',sede:t.sede||'',detalle:[t.marca,t.departamento].filter(Boolean).join(' · '),ult,informe:t.informe}));
+  // centrífugas (2025 en adelante): el "equipo" sale del nombre del archivo (ej. "EQ 2 Martinez", "IA-155")
+  const gc=new Map(); S.trab.filter(t=>t.area==='Centrífugas'&&t.fecha>='2025'&&t.cliente).forEach(t=>{ const eq=(t.detalle||t.codigo.slice(7)||'').trim(); if(!eq) return;
+    const k=slug(t.cliente)+'|'+slug(eq.replace(/\s*-\s*/g,'-')); const d=pd(t.fecha); const c=gc.get(k); if(!c||d>c.ult) gc.set(k,{t,eq,ult:d}); });
+  gc.forEach(({t,eq,ult})=>out.push({area:'Centrífuga',id:eq,cliente:t.cliente,sede:'',detalle:'',ult,informe:t.codigo}));
   out.forEach(x=>{ x.meses=FREQ(x.area,x.cliente); x.prox=addM(x.ult,x.meses); x.dias=days(x.prox,HOY); });
   return out;
 }
@@ -484,10 +510,10 @@ function vPend(){
   S._msgs={};
   return `<div class="head"><div style="flex:1;min-width:200px"><div class="eyebrow">Micropipetas cada 1 año · Termómetros: Maipú cada 6 meses, resto cada 1 año</div><h1>Para hacer</h1></div></div>
   <div class="tabs" role="tablist">${opts.map(([k,l])=>`<button class="tab" role="tab" data-pend="${k}" aria-selected="${k===t}">${esc(l)} <span class="mono">(${n(k)})</span></button>`).join('')}</div>
-  <div class="tabs">${[['','Todo'],['Micropipeta','Micropipetas'],['Termómetro','Termómetros']].map(([k,l])=>`<button class="tab" data-parea="${k}" aria-selected="${k===fa}">${l}</button>`).join('')}</div>
+  <div class="tabs">${[['','Todo'],['Micropipeta','Micropipetas'],['Termómetro','Termómetros'],['Centrífuga','Centrífugas']].map(([k,l])=>`<button class="tab" data-parea="${k}" aria-selected="${k===fa}">${l}</button>`).join('')}</div>
   <div class="eyebrow">${L.length} equipos · ${grupos.length} clientes${t==='venc'?' · vencidos en los últimos 8 meses y sin volver a calibrar':''}. Cada cliente tiene un mensaje listo para copiar y mandar.</div>
   ${grupos.map(([c,xs],gi)=>{ S._msgs[gi]=mensajeCliente(c,xs,mesTxt); const sedes={}; xs.forEach(x=>(sedes[x.sede||'']=sedes[x.sede||'']||[]).push(x));
-    return `<details class="card" style="padding:0" open><summary style="padding:14px 18px;cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><strong style="flex:1;min-width:140px">${esc(c)}</strong>${cnt(xs,x=>x.area).map(([a,k])=>`<span class="chip acc">${k} ${a==='Micropipeta'?'micropipetas':'termómetros'}</span>`).join('')}
+    return `<details class="card" style="padding:0" open><summary style="padding:14px 18px;cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><strong style="flex:1;min-width:140px">${esc(c)}</strong>${cnt(xs,x=>x.area).map(([a,k])=>`<span class="chip acc">${k} ${a.toLowerCase()}${k>1?'s':''}</span>`).join('')}
       <button class="btn small" data-copymsg="${gi}">Copiar mensaje</button><button class="btn small" data-wamsg="${gi}">Abrir WhatsApp</button></summary>
     <div style="overflow-x:auto;border-top:1px solid var(--line)"><table><thead><tr><th>Sede</th><th>Equipo</th><th>ID</th><th>Detalle</th><th>Último</th><th>Toca</th></tr></thead><tbody>
     ${Object.entries(sedes).sort().map(([s,ys])=>ys.sort((a,b)=>a.prox-b.prox).map(x=>`<tr${x.area==='Micropipeta'?` data-inf="${esc(x.informe)}"`:''}><td>${esc(s||'—')}</td><td>${x.area}</td><td class="mono">${esc(x.id)}</td><td>${esc(x.detalle)}</td><td class="mono">${esc(x.informe)} · ${fmt(x.ult)}</td><td class="mono">${fmt(x.prox)}${x.dias<0?' <span class="chip bad">vencido</span>':''}</td></tr>`).join('')).join('')}
@@ -495,17 +521,16 @@ function vPend(){
 }
 // ---- Termómetros de Mitash (M-1…M-16): dónde está cada uno. No van en la lista de pagos.
 function vPrest(){
-  const L=Object.entries(S.prest).map(([k,p])=>({k,...p})).sort((a,b)=>(parseInt(String(a.id).replace(/\D/g,''))||0)-(parseInt(String(b.id).replace(/\D/g,''))||0));
+  const L=propios();
   const fuera=L.filter(p=>p.esta_en&&!/disponible/i.test(p.estado||''));
-  const cert=id=>S.term.filter(t=>normId(t.id)===normId(id)||(t.propio&&normId(t.id)===normId(id))).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
   return `<div class="head"><div style="flex:1;min-width:200px"><div class="eyebrow">Equipos propios · no van en la lista de pagos</div><h1>Termómetros Mitash</h1></div><button class="btn primary" data-pnew="1">+ Termómetro</button></div>
   <section class="kpis"><div class="kpi"><div class="l">Total</div><div class="v">${L.length}</div></div><div class="kpi warn"><div class="l">Prestados (en clientes)</div><div class="v">${fuera.length}</div></div><div class="kpi"><div class="l">Disponibles</div><div class="v">${L.length-fuera.length}</div></div></section>
-  <div class="tablewrap"><table><thead><tr><th>ID</th><th>Estado</th><th>Dónde está</th><th>Cliente</th><th>Desde</th><th>Último certificado</th><th></th></tr></thead><tbody>
-  ${L.map(p=>{const c=cert(p.id); return `<tr><td class="mono">${esc(p.id)}</td><td>${/disponible/i.test(p.estado||'')?'<span class="chip ok">Disponible</span>':'<span class="chip warn">Prestado</span>'}</td><td>${esc(p.esta_en||'')}</td><td>${esc(p.cliente||'')}</td><td class="mono">${esc(p.desde||'')}</td><td class="mono">${esc(p.certificado||(c?c.informe:''))}</td><td><button class="btn small" data-pedit="${esc(p.k)}">Editar</button></td></tr>`}).join('')||'<tr><td colspan="7" class="empty">Sin datos. Importá prestamos.json.</td></tr>'}
+  <div class="tablewrap"><table><thead><tr><th>ID</th><th>Estado</th><th>Dónde está</th><th>Cliente</th><th>Desde</th><th>Último certificado</th><th>Próxima calibración</th><th></th></tr></thead><tbody>
+  ${L.map(p=>`<tr><td class="mono">${esc(p.id)}</td><td>${!p.estado?'<span class="chip na">Sin cargar</span>':/disponible/i.test(p.estado)?'<span class="chip ok">Disponible</span>':'<span class="chip warn">'+esc(/falta/i.test(p.estado)?'Prestado':p.estado.toLowerCase())+'</span>'}</td><td>${esc(p.esta_en||'')}</td><td>${esc(p.cliente||'')}</td><td class="mono">${esc(p.desde||'')}</td><td class="mono">${esc(p.cert||'')}${p.ult?' · '+fmt(p.ult):''}</td><td class="mono">${p.prox?fmt(p.prox)+(p.dias<0?' <span class="chip bad">vencido</span>':p.dias<=14?' <span class="chip warn">pronto</span>':''):''}</td><td><button class="btn small" data-pedit="${esc(p.k)}">Editar</button></td></tr>`).join('')||'<tr><td colspan="8" class="empty">Sin datos. Importá prestamos.json.</td></tr>'}
   </tbody></table></div>`;
 }
 function editarPrest(k){
-  const x=k?S.prest[k]||{}:{};
+  const x=k?S.prest[k]||{id:k}:{};
   drawer(`<div class="eyebrow">Termómetro de Mitash</div><h2>${esc(x.id||'Nuevo')}</h2><form class="form" id="fp">
     <div class="field"><label for="p-id">ID</label><input id="p-id" value="${esc(x.id||'')}"></div>
     <div class="field"><label for="p-estado">Estado</label><select id="p-estado">${['DISPONIBLE','PRESTADO','EN CALIBRACIÓN','ROTO'].map(o=>`<option${(x.estado||'').toUpperCase()===o||(o==='PRESTADO'&&/falta/i.test(x.estado||''))?' selected':''}>${o}</option>`).join('')}</select></div>
