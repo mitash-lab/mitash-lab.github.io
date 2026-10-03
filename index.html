@@ -617,7 +617,8 @@ const FREQ=(area,cli)=> area==='Termómetro' && /maip/i.test(cli||'') ? 6 : 12; 
 function propios(){
   const g=new Map();
   S.term.filter(t=>t.propio&&t.id).forEach(t=>{ const k=normId(t.id); const c=g.get(k); if(!c||t.fecha>c.fecha) g.set(k,t); });
-  const ids=new Set([...Object.values(S.prest).map(p=>normId(p.id)),...g.keys()]);
+  // solo los termómetros de Mitash que tienen certificado (pedido de Melina 3/10); la lista de préstamos agrega dónde está cada uno
+  const ids=new Set(g.keys());
   return [...ids].map(k=>{ const p=Object.entries(S.prest).find(([,x])=>normId(x.id)===k)||[k.replace(/^M(\d)/,'M-$1'),{id:k.replace(/^M(\d)/,'M-$1')}];
     const t=g.get(k); const ult=t?pd(t.fecha):null; const prox=ult?addM(ult,12):null;
     return {k:p[0],...p[1],cert:t?t.informe:(p[1].certificado||''),ult,prox,dias:prox?days(prox,HOY):null}; })
@@ -646,11 +647,15 @@ function vencimientos(){
   const v=vencimientosCalc(); S._vc={r:S._r,v}; return v;
 }
 function vencimientosCalc(){
-  const out=[], porInf=new Map(all().map(x=>[x.informe,x]));
-  pipetas().forEach(p=>{ if(/mitash/i.test(p.cliente||'')) return; const r=porInf.get(p.informe)||{};
-    out.push({area:'Micropipeta',id:p.id,cliente:p.cliente||'(sin cliente)',sede:r.sector||'',detalle:[r.codigo_cliente,r.marca,vol(r)].filter(Boolean).join(' · '),ult:p.ult,informe:p.informe}); });
-  const g=new Map(); S.term.forEach(t=>{ if(t.propio||!t.id) return; const k=normId(t.id)+'|'+slug(t.cliente); const d=pd(t.fecha); const c=g.get(k); if(!c||d>c.ult) g.set(k,{t,ult:d}); });
-  g.forEach(({t,ult})=>out.push({area:'Termómetro',id:t.id,cliente:t.cliente||'(sin cliente)',sede:t.sede||'',detalle:[t.marca,t.departamento].filter(Boolean).join(' · '),ult,informe:t.informe}));
+  // Uno por N° DE INFORME (cada calibración vuelve a tocar al año), no por ID: el ID se repite, el informe no.
+  // Si ese ID ya tuvo una calibración posterior, se anota en "rehecha" (sigue en la lista, como pidió Melina).
+  const out=[], ultPorId=new Map();
+  [...all().map(r=>({id:r.id,f:r.fecha,inf:r.informe})),...S.term.map(t=>({id:t.id,f:t.fecha,inf:t.informe}))].forEach(x=>{ if(!x.id) return; const k=normId(x.id); const c=ultPorId.get(k); if(!c||x.f>c.f) ultPorId.set(k,x); });
+  const rehecha=(id,fecha,inf)=>{ const u=id&&ultPorId.get(normId(id)); return u&&u.f>fecha&&u.inf!==inf?u:null; };
+  all().forEach(r=>{ if(/mitash/i.test(r.cliente||'')||!r.fecha) return;
+    out.push({area:'Micropipeta',id:r.id||'(sin ID)',cliente:r.cliente||'(sin cliente)',sede:r.sector||'',detalle:[r.codigo_cliente,r.marca,vol(r),r.canales?r.canales+' canales':''].filter(Boolean).join(' · '),ult:pd(r.fecha),informe:r.informe,rehecha:rehecha(r.id,r.fecha,r.informe)}); });
+  S.term.forEach(t=>{ if(t.propio||!t.fecha) return;
+    out.push({area:'Termómetro',id:t.id||'(sin ID)',cliente:t.cliente||'(sin cliente)',sede:t.sede||'',detalle:[t.marca,t.departamento].filter(Boolean).join(' · '),ult:pd(t.fecha),informe:t.informe,rehecha:rehecha(t.id,t.fecha,t.informe)}); });
   // centrífugas (2025 en adelante): el "equipo" sale del nombre del archivo (ej. "EQ 2 Martinez", "IA-155")
   const gc=new Map(); S.trab.filter(t=>t.area==='Centrífugas'&&t.fecha>='2025'&&t.cliente).forEach(t=>{ const eq=(t.detalle||t.codigo.slice(7)||'').trim(); if(!eq) return;
     const k=slug(t.cliente)+'|'+slug(eq.replace(/\s*-\s*/g,'-')); const d=pd(t.fecha); const c=gc.get(k); if(!c||d>c.ult) gc.set(k,{t,eq,ult:d}); });
@@ -684,7 +689,7 @@ function vPend(){
     return `<details class="card" style="padding:0" open><summary style="padding:14px 18px;cursor:pointer;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><strong style="flex:1;min-width:140px">${esc(c)}</strong>${cnt(xs,x=>x.area).map(([a,k])=>`<span class="chip acc">${k} ${a.toLowerCase()}${k>1?'s':''}</span>`).join('')}
       <button class="btn small" data-copymsg="${gi}">Copiar mensaje</button><button class="btn small" data-wamsg="${gi}">Abrir WhatsApp</button></summary>
     <div style="overflow-x:auto;border-top:1px solid var(--line)"><table><thead><tr><th>Sede</th><th>Equipo</th><th>ID</th><th>Detalle</th><th>Último</th><th>Toca</th></tr></thead><tbody>
-    ${Object.entries(sedes).sort().map(([s,ys])=>ys.sort((a,b)=>a.prox-b.prox).map(x=>`<tr${x.area==='Micropipeta'?` data-inf="${esc(x.informe)}"`:''}><td>${esc(s||'—')}</td><td>${x.area}</td><td class="mono">${esc(x.id)}</td><td>${esc(x.detalle)}</td><td class="mono">${esc(x.informe)} · ${fmt(x.ult)}</td><td class="mono">${fmt(x.prox)}${x.dias<0?' <span class="chip bad">vencido</span>':''}</td></tr>`).join('')).join('')}
+    ${Object.entries(sedes).sort().map(([s,ys])=>ys.sort((a,b)=>a.prox-b.prox).map(x=>`<tr${x.area==='Micropipeta'?` data-inf="${esc(x.informe)}"`:''}><td>${esc(s||'—')}</td><td>${x.area}</td><td class="mono">${esc(x.id)}</td><td>${esc(x.detalle)}</td><td class="mono">${esc(x.informe)} · ${fmt(x.ult)}</td><td class="mono">${fmt(x.prox)}${x.rehecha?` <span class="chip ok" title="Ese ID se volvió a calibrar">ya se rehízo: ${esc(x.rehecha.inf)}</span>`:x.dias<0?' <span class="chip bad">vencido</span>':''}</td></tr>`).join('')).join('')}
     </tbody></table></div></details>`}).join('')||'<p class="empty">Nada para este período.</p>'}`;
 }
 // ---- Termómetros de Mitash (M-1…M-16): dónde está cada uno. No van en la lista de pagos.
