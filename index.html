@@ -123,6 +123,7 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--surface-2)}
 <div class="app">
   <nav class="side" aria-label="Secciones">
     <div class="brand">Mitash<small>Gestión de metrología</small></div>
+    <button class="navbtn" data-view="buscar">🔎 Buscar equipo</button>
     <button class="navbtn" data-view="agenda">Agenda y recordatorios</button>
     <button class="navbtn" data-view="tareas">Tareas pendientes</button>
     <button class="navbtn" data-view="ingresos">Ingresos al taller</button>
@@ -164,7 +165,7 @@ window.addEventListener('unhandledrejection',e=>{ const m=document.getElementByI
 const HOY = new Date(); HOY.setHours(0,0,0,0);
 const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const MES3=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-const S={base:[],trab:[],term:[],prest:{},vis:{},ent:{},rec:{},tar:{},ing:{},pag:{},avp:{},ft:{q:'',area:'',anio:'',cliente:''},over:{},clientes:{},view:'agenda',db:null,f:{q:'',anio:'',cliente:'',res:'',fac:''},page:0,calTab:'prox',pcAnio:String(new Date().getFullYear()),stAnio:String(new Date().getFullYear())};
+const S={base:[],trab:[],term:[],prest:{},vis:{},ent:{},rec:{},tar:{},ing:{},pag:{},avp:{},evt:{},ft:{q:'',area:'',anio:'',cliente:''},over:{},clientes:{},view:'agenda',db:null,f:{q:'',anio:'',cliente:'',res:'',fac:''},page:0,calTab:'prox',pcAnio:String(new Date().getFullYear()),stAnio:String(new Date().getFullYear())};
 try{ const v=localStorage.getItem('mitash.view'); if(v) S.view=v; }catch(e){}
 const $=s=>document.querySelector(s);
 const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -212,6 +213,7 @@ function render(){
   else if(v==='tareas') M.innerHTML=warn+vTareas();
   else if(v==='pagos') M.innerHTML=warn+vPagos();
   else if(v==='bitacora') M.innerHTML=vBitacora();
+  else if(v==='buscar') M.innerHTML=vBuscar();
   else if(v==='ingresos') M.innerHTML=warn+vIngresos();
   else if(v==='tablero') M.innerHTML=warn+vTablero();
   else if(v==='trabajos'||v.startsWith('area:')) M.innerHTML=warn+vTrab();
@@ -312,7 +314,35 @@ function vCal(){
 // ---- Agenda: visitas (cronograma), cosas para llevar/retirar y recordatorios.
 // Clave del sistema: si hay una visita programada a un cliente que tiene algo pendiente de entregar, avisar "aprovechar viaje".
 const TECNICOS=['Melina','Jorge','Lucho','Maxi','Claudio'];
-const COLS={vis:'visitas',ent:'entregas',rec:'recordatorios',tar:'tareas',ing:'ingresos',prest:'prestamos',pag:'pagos',avp:'avisos'};
+const COLS={vis:'visitas',ent:'entregas',rec:'recordatorios',tar:'tareas',ing:'ingresos',prest:'prestamos',pag:'pagos',avp:'avisos',evt:'eventos'};
+// ---- Buscar equipo: historial completo de un equipo por su ID (como la base de la UTN por n° UTN).
+// "194" encuentra IA-194, IA 194, IA-194 Rossi…; "hj123" encuentra HJ123. Junta todas las fuentes.
+const claveId=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+function coincide(texto,q){ const t=claveId(texto), k=claveId(q); if(!k) return false;
+  if(/^\d+$/.test(k)) return new RegExp('(^|[A-Z])0*'+k+'(?!\\d)').test(t); // número suelto: que no sea parte de otro número
+  return t.includes(k); }
+function historialEquipo(q){
+  const ev=[];
+  all().forEach(r=>{ if(coincide(r.id,q)||coincide(r.codigo_cliente,q)) ev.push({fecha:r.fecha,area:'Micropipeta',que:(r.trabajo||'Calibración')+' · '+(/^no cumple/i.test(r.resultado||'')?'requirió ajuste':/^cumple/i.test(r.resultado||'')?'cumple':'sin resultado'),cliente:r.cliente,ref:r.informe,id:r.id,detalle:[r.marca,r.modelo,vol(r)].filter(Boolean).join(' '),inf:r.informe}); });
+  S.term.forEach(t=>{ if(coincide(t.id,q)||coincide(t.serie,q)) ev.push({fecha:t.fecha,area:'Termómetro',que:'Calibración',cliente:t.cliente,ref:t.informe,id:t.id,detalle:[t.marca,t.sede].filter(Boolean).join(' · ')}); });
+  S.trab.forEach(t=>{ if(coincide(t.detalle,q)||coincide(t.codigo,q)||(q.length>=4&&!/^\d+$/.test(q.trim())&&String(t.detalle||'').toLowerCase().includes(q.trim().toLowerCase()))) ev.push({fecha:t.fecha,area:t.area,que:t.area==='Reparaciones'?'Correctivo'+(t.origen==='whatsapp'?' (WhatsApp)':''):t.area==='Cabinas y campanas'?'Validación / preventivo':'Control / preventivo',cliente:t.cliente,ref:t.codigo,id:t.detalle,detalle:(t.archivos||[])[0]||''}); });
+  Object.values(S.ing).forEach(x=>{ if(!x.borrado&&(coincide(x.serie,q)||String(x.ids||'').split(/[\n,;]+/).some(i=>coincide(i,q)))) ev.push({fecha:x.fecha,area:'Taller',que:'Ingresó al taller · '+(x.estado||'Ingresado'),cliente:x.cliente,ref:x.remito||'',id:x.serie||q,detalle:x.motivo||''}); });
+  Object.values(S.evt).forEach(e=>{ if(!e.borrado&&coincide(e.equipo_id,q)) ev.push({fecha:e.fecha,area:e.tipo||'Trabajo',que:e.detalle||e.tipo||'',cliente:e.cliente,ref:e.informe||'',id:e.equipo_id,detalle:[e.quien,e.origen==='whatsapp'?'desde WhatsApp':'cargado a mano'].filter(Boolean).join(' · ')}); });
+  Object.values(S.tar).forEach(t=>{ if(!t.borrado&&coincide(t.texto,q)) ev.push({fecha:t.creado||t.para,area:'Tarea',que:t.texto+(t.estado==='hecho'?' (hecha)':''),cliente:t.cliente,ref:'',id:'',detalle:t.responsable||''}); });
+  Object.values(S.prest).forEach(p=>{ if(coincide(p.id,q)||coincide(p.reemplaza,q)) ev.push({fecha:p.desde||'',area:'Préstamo',que:`${p.id} ${/disponible/i.test(p.estado||'')?'disponible':'en '+(p.esta_en||p.cliente||'cliente')}`,cliente:p.cliente,ref:p.certificado||'',id:p.id,detalle:p.reemplaza?'reemplaza a '+p.reemplaza:''}); });
+  return ev.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+}
+function vBuscar(){
+  const q=S.bq||'', E=q.trim().length>=2?historialEquipo(q):[];
+  const ids=[...new Set(E.map(e=>e.id).filter(Boolean))].slice(0,8);
+  return `<div class="head"><div style="flex:1;min-width:200px"><div class="eyebrow">Por ID, n° de serie o código del cliente (IA-194, 194, J30050B, M-6…)</div><h1>Buscar equipo</h1></div><button class="btn" data-new="evt">+ Registrar trabajo</button></div>
+  <div class="field"><label for="bq">ID del equipo</label><input id="bq" type="search" inputmode="search" autocomplete="off" placeholder="Ej: 194" value="${esc(q)}" style="font-size:18px"></div>
+  ${q.trim().length<2?'<p class="empty">Escribí al menos 2 caracteres.</p>':!E.length?'<p class="empty">No encontré nada con ese ID. Puede que el trabajo no esté en el Drive: cargalo desde Tareas o Ingresos, o por el bot.</p>':`
+  <div class="eyebrow">${E.length} registros${ids.length>1?' · coincide con: '+ids.map(esc).join(', '):''}</div>
+  <section class="kpis">${cnt(E,e=>e.area).map(([a,n])=>`<div class="kpi"><div class="l">${esc(a)}</div><div class="v">${n}</div><div class="n">último: ${fmt(pd(E.find(e=>e.area===a).fecha))}</div></div>`).join('')}</section>
+  <div class="card"><h2>Historial</h2><div class="list">${E.map(e=>`<div class="row" style="align-items:flex-start"${e.inf?` data-infq="${esc(e.inf)}"`:''}><span class="mono" style="min-width:86px">${e.fecha?fmt(pd(e.fecha)):'—'}</span><div class="grow"><div><span class="chip acc">${esc(e.area)}</span> ${esc(e.que)}</div><div class="eyebrow">${[e.cliente,e.id,e.detalle,e.ref].filter(Boolean).map(esc).join(' · ')}</div></div></div>`).join('')}</div></div>`}`;
+}
+
 // ---- Bitácora: lo que pidió el equipo (sobre todo Claudio, en los grupos de WhatsApp) y en qué está. Pedido de Claudio del 30/9.
 const BITACORA=[
   ['hecho','Qué cliente toca cada mes, con IDs y mensaje armado para el cliente','Claudio 29/6 y 30/9'],
@@ -449,6 +479,7 @@ const FORMS={
   ent:['Para llevar / retirar',[['tipo','Tipo','sel:Entregar|Retirar|Llevar material'],['cliente','Cliente','cli'],['que','Qué (ej. 5 termómetros calibrados)','text'],['responsable','Quién lo tiene / lo preparó','sel:'+TECNICOS.join('|')],['notas','Notas','area']]],
   tar:['Tarea',[['texto','Qué hay que hacer (ej. Centrífuga caseros, revisar cierre)','text'],['cliente','Cliente (opcional)','cli'],['responsable','Quién','sel:|'+TECNICOS.join('|')],['para','Para cuándo','date'],['prioridad','Prioridad','sel:Normal|Urgente'],['notas','Notas','area']]],
   ing:['Ingreso al taller',[['fecha','Fecha de ingreso','date'],['cliente','Cliente','cli'],['equipo','Qué entró (ej. micropipetas, termómetros, centrífuga)','text'],['cantidad','Cantidad','number'],['ids','IDs / N° de serie (uno por línea; se tachan solos cuando se hace el informe)','area'],['trajo','Quién lo trajo','sel:|'+TECNICOS.join('|')],['remito','N° de recibo / remito del cliente','text'],['serie','ID (si es un solo equipo)','text'],['motivo','Motivo (calibración, reparación…)','text'],['responsable','Quién lo tiene','sel:|'+TECNICOS.join('|')],['prioridad','Prioridad','sel:Normal|Urgente'],['estado','Estado','sel:Ingresado|En revisión|Esperando repuesto|Listo para entregar|Entregado'],['notas','Notas','area']]],
+  evt:['Trabajo hecho a un equipo',[['equipo_id','ID del equipo (ej. IA-194)','text'],['fecha','Fecha','date'],['tipo','Tipo','sel:Preventivo|Correctivo|Calibración|Verificación|Validación|Otro'],['cliente','Cliente','cli'],['detalle','Qué se hizo (ej. cambio de carbones)','text'],['quien','Quién lo hizo','sel:|'+TECNICOS.join('|')],['informe','N° de informe (si hay)','text'],['notas','Notas','area']]],
   rec:['Recordatorio',[['texto','Recordarme…','text'],['cuando','Cuándo','datetime-local'],['para','Para quién','sel:Todos|'+TECNICOS.join('|')],['repetir','Repetir','sel:|cada semana|cada mes|cada año'],['notas','Notas','area']]]
 };
 function editar(col,id){
@@ -459,7 +490,7 @@ function editar(col,id){
       t.startsWith('sel:')?`<select id="a-${k}">${t.slice(4).split('|').map(o=>`<option${(x[k]||'')===o?' selected':''}>${o}</option>`).join('')}</select>`
       :t==='area'?`<textarea id="a-${k}">${esc(x[k]||'')}</textarea>`
       :t==='check'?`<label class="check"><input type="checkbox" id="a-${k}"${x[k]?' checked':''}> Sí</label>`
-      :`<input id="a-${k}" type="${t==='cli'?'text':t}" ${t==='cli'?'list="dl-cli2"':''} value="${esc(x[k]||(k==='fecha'&&!id?iso(HOY):k==='cuando'&&!id?ahoraISO():''))}">`}</div>`).join('')}
+      :`<input id="a-${k}" type="${t==='cli'?'text':t}" ${t==='cli'?'list="dl-cli2"':''} value="${esc(x[k]||(k==='fecha'&&!id?iso(HOY):k==='cuando'&&!id?ahoraISO():k==='equipo_id'&&!id?(S.bq||''):''))}">`}</div>`).join('')}
     <datalist id="dl-cli2">${clis.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
     <div class="full" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px"><button class="btn primary" type="submit">Guardar</button><button class="btn" type="button" data-close>Cancelar</button>${id?'<button class="btn" type="button" id="a-del" style="margin-left:auto;color:var(--bad-fg)">Borrar</button>':''}</div></form>`);
   $('#fa').onsubmit=async e=>{ e.preventDefault(); const o=Object.assign({},x);
@@ -468,6 +499,8 @@ function editar(col,id){
     if(col==='ent'&&(!o.cliente||!o.que)){ toast('Poné cliente y qué hay que llevar'); return; }
     if(col==='rec'&&!o.texto){ toast('Escribí el recordatorio'); return; }
     if(col==='tar'&&!o.texto){ toast('Escribí la tarea'); return; }
+    if(col==='evt'&&(!o.equipo_id||!o.fecha)){ toast('Poné el ID del equipo y la fecha'); return; }
+    if(col==='evt'&&!id) o.origen='web';
     if(col==='ing'&&(!o.cliente||!o.equipo)){ toast('Poné cliente y equipo'); return; }
     if(col==='ent'&&!id){ o.estado='pendiente'; o.creado=iso(HOY); } if(col==='rec'&&!id) o.estado='activo';
     if(col==='tar'&&!id){ o.estado='pendiente'; o.creado=iso(HOY); }
@@ -829,6 +862,8 @@ function bind(){
   M.querySelectorAll('[data-avsnooze]').forEach(b=>b.onclick=async()=>{ const [k,h]=b.dataset.avsnooze.split(':'); const d=new Date(Date.now()+Number(h)*3600000); d.setMinutes(d.getMinutes()-d.getTimezoneOffset());
     if(!S.db){ toast('Para guardar tenés que entrar con tu usuario'); return; }
     const o={hasta:d.toISOString().slice(0,16)}; try{ await S.db.doc('avisos/'+k).set(o); S.avp[k]=o; render(); toast(Number(h)===6?'Pospuesto 6 horas':'Pospuesto 1 día'); }catch(e){ toast('No se pudo guardar'); } });
+  const bq=$('#bq'); if(bq){ bq.addEventListener('input',()=>{ clearTimeout(qTimer); qTimer=setTimeout(()=>{ S.bq=bq.value; const pos=bq.selectionStart; render(); const n=$('#bq'); n.focus(); n.setSelectionRange(pos,pos); },250); }); if(!S.bq) bq.focus(); }
+  M.querySelectorAll('[data-infq]').forEach(r=>r.onclick=()=>{ const x=all().find(y=>y.informe===r.dataset.infq); x&&ficha(x,false); });
   M.querySelectorAll('[data-remito]').forEach(b=>b.onclick=()=>remito(b.dataset.remito));
   M.querySelectorAll('[data-pnew]').forEach(b=>b.onclick=()=>editarPrest(null));
   M.querySelectorAll('[data-pedit]').forEach(b=>b.onclick=()=>editarPrest(b.dataset.pedit));
@@ -901,7 +936,7 @@ async function arrancar(){
   escucharAgenda();
 }
 function escucharAgenda(){
-  [['visitas','vis'],['entregas','ent'],['recordatorios','rec'],['prestamos','prest'],['tareas','tar'],['ingresos','ing'],['pagos','pag'],['avisos','avp']].forEach(([c,k])=>S.db.collection(c).onSnapshot(s=>{
+  [['visitas','vis'],['entregas','ent'],['recordatorios','rec'],['prestamos','prest'],['tareas','tar'],['ingresos','ing'],['pagos','pag'],['avisos','avp'],['eventos','evt']].forEach(([c,k])=>S.db.collection(c).onSnapshot(s=>{
     const o={}; s.docs.forEach(d=>{ const x=d.data(); if(!x.borrado) o[d.id]=x; }); S[k]=o; if(!$('#overlay').innerHTML) render(); }, ()=>{}));
 }
 // Base en memoria para probar en la compu sin login (?local). No guarda nada de verdad.
@@ -913,6 +948,7 @@ async function init(){
   if(location.hostname==='localhost' && location.search.includes('local')){
     S.base=await (await fetch('historial.json')).json(); S.trab=await (await fetch('trabajos.json')).json();
     S.term=await (await fetch('termometros.json')).json();
+    try{ S.trab=S.trab.concat(await (await fetch('trabajos_whatsapp.json')).json()); }catch(e){}
     S.db=memDB(); S.dbChecked=true;
     for(const p of await (await fetch('prestamos.json')).json()) await S.db.doc('prestamos/'+p.id.replace(/\s+/g,'')).set(p);
     try{ for(const p of await (await fetch('pagos.json')).json()) await S.db.doc('pagos/'+p.id).set(p); }catch(e){}
