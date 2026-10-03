@@ -1,0 +1,17 @@
+{
+  "name": "Sistema Mitash",
+  "short_name": "Mitash",
+  "description": "Gestión de metrología: micropipetas, vencimientos, clientes y más.",
+  "lang": "es-AR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#12292B",
+  "theme_color": "#12292B",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
