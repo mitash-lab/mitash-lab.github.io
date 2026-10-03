@@ -1,8 +1,8 @@
-<!doctype html>
+﻿<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sistema Mitash</title>
-<meta name="theme-color" content="#12292B">
+<meta name="theme-color" content="#FFFFFF">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -13,15 +13,16 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&display=swap">
 <style>
 /* Layout: barra lateral oscura fija + área de trabajo; en teléfono la barra pasa arriba y se desliza. */
+[hidden]{display:none!important} /* si no, .app{display:flex} le gana al atributo hidden y el login quedaba abajo, fuera de la vista */
 :root{
-  --bg:#F3F1EC; --surface:#FFFFFF; --surface-2:#F8F7F3; --line:#E0DCD3; --line-soft:#ECE9E2;
-  --fg:#1B1D1F; --muted:#585E64; --accent:#0F5C63; --accent-fg:#FFFFFF; --accent-soft:#DDEBEC;
-  --nav:#12292B; --nav-fg:#E8ECEA; --nav-muted:#A9B8B6; --nav-active:#1F4A4D;
+  --bg:#F5F8F7; --surface:#FFFFFF; --surface-2:#F7FAF9; --line:#DCE5E3; --line-soft:#EAF0EE;
+  --fg:#1B1D1F; --muted:#5A6468; --accent:#0E7C86; --accent-fg:#FFFFFF; --accent-soft:#DDF1F2;
+  --nav:#FFFFFF; --nav-fg:#1B2A2C; --nav-muted:#6B7A7C; --nav-active:#DDF1F2;
   --ok-bg:#E3F1E7; --ok-fg:#1E5E33; --warn-bg:#FDF1DE; --warn-fg:#8A4B08; --bad-bg:#FBE9E7; --bad-fg:#9A1C12; --na-bg:#EFEDE8; --na-fg:#585E64;
   --bar:#0F5C63;
   --f-sans:'IBM Plex Sans',system-ui,sans-serif; --f-cond:'IBM Plex Sans Condensed','IBM Plex Sans',system-ui,sans-serif; --f-mono:'IBM Plex Mono',ui-monospace,monospace;
 }
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+@media (prefers-color-scheme: dark){:root[data-theme="auto-dark"]{ /* modo oscuro desactivado: Melina prefiere la versión clara */
   --bg:#111617; --surface:#1A2123; --surface-2:#161C1E; --line:#2E393B; --line-soft:#242D2F;
   --fg:#E7ECEB; --muted:#A3AEAD; --accent:#5FB3B9; --accent-fg:#0B1E20; --accent-soft:#183A3D;
   --nav:#0B1A1B; --nav-fg:#E2E9E8; --nav-muted:#8FA3A1; --nav-active:#1B3B3E;
@@ -38,14 +39,14 @@ html,body{height:100%}
 body{background:var(--bg);color:var(--fg);font-family:var(--f-sans);font-size:14px;line-height:1.45}
 button,input,select,textarea{font:inherit;color:inherit}
 .app{display:flex;min-height:100%}
-nav.side{width:224px;flex-shrink:0;background:var(--nav);color:var(--nav-fg);padding:24px 14px;display:flex;flex-direction:column;gap:2px;position:sticky;top:0;height:100vh;overflow-y:auto}
-.brand{font-family:var(--f-cond);font-size:24px;letter-spacing:.02em;padding:0 10px 18px}
+nav.side{width:224px;flex-shrink:0;background:var(--nav);color:var(--nav-fg);border-right:1px solid var(--line);padding:24px 14px;display:flex;flex-direction:column;gap:2px;position:sticky;top:0;height:100vh;overflow-y:auto}
+.brand{font-family:var(--f-cond);font-size:24px;letter-spacing:.02em;padding:0 10px 18px;color:var(--accent)}
 .brand small{display:block;font-family:var(--f-sans);font-size:12px;font-weight:400;color:var(--nav-muted);letter-spacing:0}
 .navgroup{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--nav-muted);padding:16px 10px 6px}
 .navbtn{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:0;color:var(--nav-fg);padding:10px;border-radius:8px;cursor:pointer;min-height:40px}
-.navbtn:hover{background:rgba(255,255,255,.06)}
-.navbtn[aria-current="page"]{background:var(--nav-active);font-weight:600}
-.navbtn .soon{margin-left:auto;font-size:10px;color:var(--nav-muted);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:1px 6px}
+.navbtn:hover{background:rgba(14,124,134,.07)}
+.navbtn[aria-current="page"]{background:var(--nav-active);color:var(--accent);font-weight:600}
+.navbtn .soon{margin-left:auto;font-size:10px;color:var(--nav-muted);border:1px solid var(--line);border-radius:8px;padding:1px 6px}
 .navbtn:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 main{flex:1;min-width:0;padding-block:28px 48px;padding-inline:clamp(16px,3vw,40px);display:flex;flex-direction:column;gap:20px}
 .head{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}
@@ -110,10 +111,11 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--surface-2)}
   .brand{padding:0 12px 0 0;font-size:20px} .brand small,.navgroup{display:none}
   .navbtn{width:auto;white-space:nowrap} .navbtn .soon{display:none}
 }
-.userbox{margin-top:auto;padding:16px 10px 0;border-top:1px solid rgba(255,255,255,.12);font-size:12px;color:var(--nav-muted);display:flex;flex-direction:column;gap:6px;overflow-wrap:anywhere}
+.userbox{margin-top:auto;padding:16px 10px 0;border-top:1px solid var(--line);font-size:12px;color:var(--nav-muted);display:flex;flex-direction:column;gap:6px;overflow-wrap:anywhere}
 .userbox .navbtn{padding:6px 0;min-height:32px;color:var(--nav-muted)}
-.login{min-height:100vh;display:grid;place-items:center;padding:16px;background:var(--nav)}
-.login form{background:var(--surface);border-radius:14px;padding:28px 24px;width:min(380px,100%);display:flex;flex-direction:column;gap:14px}
+.login{min-height:100vh;display:grid;place-items:center;padding:16px;background:linear-gradient(160deg,#E3F4F5 0%,#F5F8F7 60%)}
+.login form{background:var(--surface);border-radius:16px;padding:28px 24px;width:min(380px,100%);display:flex;flex-direction:column;gap:14px;box-shadow:0 10px 30px rgba(14,124,134,.12)}
+.login h1{color:var(--accent)}
 .login h1{margin:0;font-family:var(--f-cond);font-size:28px}
 .login .err{color:var(--bad-fg);font-size:13px;min-height:18px}
 @media (max-width:760px){.userbox{margin:0;padding:0 0 0 8px;border:0;flex-direction:row;align-items:center;white-space:nowrap}.userbox span{display:none}}
@@ -153,14 +155,14 @@ tbody tr{cursor:pointer} tbody tr:hover{background:var(--surface-2)}
     <button class="navbtn" data-view="bitacora">Bitácora del sistema</button>
     <div class="userbox" id="userbox" hidden><span id="useremail"></span><button class="navbtn" id="logout">Cerrar sesión</button></div>
   </nav>
-  <main id="main"><p class="empty">Cargando… (v3)</p></main>
+  <main id="main"><p class="empty">Cargando… (v4)</p></main>
 </div>
 <div id="overlay"></div>
 
 <script>
 // Si algo falla, mostrarlo en pantalla (para poder mandar captura) en vez de quedar en "Cargando…"
-window.addEventListener('error',e=>{ const m=document.getElementById('main'); if(m) m.innerHTML='<div class="banner">Error: '+String(e.message||e).replace(/</g,'&lt;')+' (v3)</div>'; });
-window.addEventListener('unhandledrejection',e=>{ const m=document.getElementById('main'); if(m) m.innerHTML='<div class="banner">Error: '+String((e.reason&&e.reason.message)||e.reason).replace(/</g,'&lt;')+' (v3)</div>'; });
+window.addEventListener('error',e=>{ const m=document.getElementById('main'); if(m) m.innerHTML='<div class="banner">Error: '+String(e.message||e).replace(/</g,'&lt;')+' (v4)</div>'; });
+window.addEventListener('unhandledrejection',e=>{ const m=document.getElementById('main'); if(m) m.innerHTML='<div class="banner">Error: '+String((e.reason&&e.reason.message)||e.reason).replace(/</g,'&lt;')+' (v4)</div>'; });
 (function(){
 const HOY = new Date(); HOY.setHours(0,0,0,0);
 const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -915,7 +917,7 @@ function vLogin(msg){
     <div class="field"><label for="lemail">Email</label><input id="lemail" type="email" autocomplete="username" required></div>
     <div class="field"><label for="lpass">Contraseña</label><input id="lpass" type="password" autocomplete="current-password" required></div>
     <div class="err" id="lerr">${esc(msg||'')}</div>
-    <button class="btn primary" type="submit">Entrar</button><div class="eyebrow">v3</div></form>`;
+    <button class="btn primary" type="submit">Entrar</button><div class="eyebrow">v4</div></form>`;
   $('#flogin').onsubmit=async e=>{ e.preventDefault(); $('#lerr').textContent='Entrando…';
     let error; try{ ({error}=await conTiempo(sb.auth.signInWithPassword({email:$('#lemail').value.trim(),password:$('#lpass').value}),15000)); }catch(e){ error=e; }
     if(error){ $('#lerr').textContent=error.message==='tiempo'?'No responde el servidor. Revisá internet y probá de nuevo.':'Email o contraseña incorrectos.'; return; }
