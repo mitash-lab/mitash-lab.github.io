@@ -1,5 +1,5 @@
-﻿// Service worker mÃ­nimo: permite instalar la web como app y abrirla aunque la seÃ±al sea mala.
-// Siempre pide la versiÃ³n nueva a la red (sin cachÃ© del navegador) y usa la copia guardada solo si no hay conexiÃ³n.
+// Service worker mínimo: permite instalar la web como app y abrirla aunque la señal sea mala.
+// Siempre pide la versión nueva a la red (sin caché del navegador) y usa la copia guardada solo si no hay conexión.
 const CACHE = 'mitash-v5';
 const BASICOS = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
