@@ -1027,7 +1027,7 @@ async function cargarTabla(tabla){
   return out;
 }
 function vLogin(msg){
-  document.querySelector('.app').hidden=true;
+  document.querySelector('.app').hidden=true; document.querySelector('nav.bottom').hidden=true;
   let L=$('#login'); if(!L){ L=document.createElement('div'); L.id='login'; document.body.appendChild(L); }
   L.className='login'; L.hidden=false;
   L.innerHTML=`<form id="flogin"><div><div class="eyebrow">Gestión de metrología</div><h1>Mitash</h1></div>
@@ -1041,7 +1041,7 @@ function vLogin(msg){
     L.hidden=true; arrancar(); };
 }
 async function arrancar(){
-  document.querySelector('.app').hidden=false;
+  document.querySelector('.app').hidden=false; document.querySelector('nav.bottom').hidden=false;
   const {data:{session}}=await sb.auth.getSession();
   S.email=session?session.user.email:'';
   $('#userbox').hidden=false; $('#useremail').textContent=S.email;
