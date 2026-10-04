@@ -487,7 +487,26 @@ function vTareas(){
 // ---- Ingresos al taller: cada equipo que entra lleva un contador de días (pedido de Claudio).
 const ING_ALERTA=15, ING_CRITICO=30;
 // Avance de un ingreso: qué IDs de la lista ya tienen informe (micropipeta o termómetro) desde la fecha de ingreso.
+// Tandas cargadas solo con cantidad ("5 micropipetas de ANMAT"): los informes que van apareciendo en el Drive de ese cliente,
+// desde la fecha de ingreso, se asignan solos a la tanda más vieja que tenga lugar. Así nadie carga IDs a mano.
+const tipoIng=x=>/term[oó]m|datalog/i.test(x.equipo||'')?'T':/micro|pipeta/i.test(x.equipo||'')?'M':'?';
+function asignaciones(){
+  if(S._asig&&S._asig.r===S._r) return S._asig.v;
+  const v=new Map(), usados=new Set();
+  const tandas=Object.entries(S.ing).map(([id,x])=>({id,...x})).filter(x=>!x.borrado&&!String(x.ids||x.serie||'').trim()&&Number(x.cantidad)>0&&tipoIng(x)!=='?').sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
+  tandas.forEach(x=>{
+    const fuente=tipoIng(x)==='M'?all():S.term, lugar=Number(x.cantidad)-(Number(x.hechas_sin_id)||0);
+    const L=fuente.filter(r=>r.fecha>=(x.fecha||'')&&mismoCliente(r.cliente,x.cliente)&&!usados.has(r.informe)).sort((a,b)=>a.informe.localeCompare(b.informe,undefined,{numeric:true})).slice(0,Math.max(0,lugar));
+    L.forEach(r=>usados.add(r.informe)); v.set(x.id,L.map(r=>({id:r.id||'?',informe:r.informe,pdf:r.pdf})));
+  });
+  S._asig={r:S._r,v}; return v;
+}
 function avance(x){
+  if(!String(x.ids||x.serie||'').trim()&&Number(x.cantidad)>0&&tipoIng(x)!=='?'){
+    const id=Object.keys(S.ing).find(k=>S.ing[k]===x)||x.id;
+    const L=asignaciones().get(id)||[], man=Number(x.hechas_sin_id)||0, total=Number(x.cantidad);
+    return {L,total,hechos:Math.min(total,L.length+man),auto:true,man};
+  }
   const ids=String(x.ids||x.serie||'').split(/[\n,;]+/).map(s=>s.trim()).filter(Boolean);
   const hechos=new Map(); [...all(),...S.term].forEach(r=>{ if(r.id&&r.fecha>=(x.fecha||'')) hechos.set(normId(r.id),r.informe); });
   const man=new Set((x.hechos_manual||[]).map(normId)); // los que Meli tacha a mano antes de que el informe esté en el Drive
@@ -514,8 +533,11 @@ function vIngresos(){
   <section class="kpis"><div class="kpi"><div class="l">En el taller</div><div class="v">${L.length}</div></div><div class="kpi bad"><div class="l">Atascados (+${ING_CRITICO} días)</div><div class="v">${at.length}</div></div><div class="kpi warn"><div class="l">Urgentes</div><div class="v">${L.filter(x=>x.prioridad==='Urgente').length}</div></div><div class="kpi"><div class="l">Listos para entregar</div><div class="v">${L.filter(x=>x.estado==='Listo para entregar').length}</div></div></section>
   <div class="tablewrap"><table><thead><tr><th>Días</th><th>Ingresó</th><th>Cliente</th><th>Qué entró</th><th>Avance</th><th>Motivo</th><th>Estado</th><th>Quién</th><th></th></tr></thead><tbody>
   ${L.map(x=>{const a=avance(x); return `<tr><td class="mono"><span class="chip ${x.estado==='Listo para entregar'?'ok':x.dias>=ING_CRITICO?'bad':x.dias>=ING_ALERTA?'warn':'na'}">${x.dias} d</span></td><td class="mono">${fmt(pd(x.fecha))}</td><td>${esc(x.cliente||'')}${x.remito?`<div class="eyebrow">recibo ${esc(x.remito)}</div>`:''}</td><td>${x.prioridad==='Urgente'?'<span class="chip bad">Urgente</span> ':''}${esc(x.equipo||'')}${x.serie?` <span class="mono">${esc(x.serie)}</span>`:''}</td>
-    <td>${a.total?`<span class="chip ${a.hechos>=a.total?'ok':'acc'}">${a.hechos} de ${a.total} hechos</span>${a.L.length?`<details${a.hechos<a.total?' open':''}><summary class="eyebrow" style="cursor:pointer">tocá cada ID cuando la calibres</summary>${a.L.map(i=>`<button class="btn small" style="min-height:28px;margin:2px 0;font-family:var(--f-mono)" data-ingtog="${esc(x.id)}|${esc(i.id)}"${i.informe&&i.informe!=='✓ marcada'?' disabled title="ya tiene informe"':''}>${i.informe?'✅ <s>'+esc(i.id)+'</s> '+esc(i.informe):'⬜ '+esc(i.id)}</button>`).join('<br>')}</details>`:`<div style="display:flex;gap:4px;margin-top:4px"><button class="btn small" data-ingmas="${esc(x.id)}|1">+1 hecha</button><button class="btn small" data-ingmas="${esc(x.id)}|-1">−1</button></div>`}`:'<span class="empty">—</span>'}</td>
-    <td>${esc(x.motivo||'')}</td><td>${esc(x.estado||'Ingresado')}</td><td>${esc(x.responsable||'')}</td><td><button class="btn small" data-edit="ing:${esc(x.id)}">Editar</button> <button class="btn small" data-remito="${esc(x.id)}">Remito</button></td></tr>`}).join('')||'<tr><td colspan="9" class="empty">No hay equipos en el taller. Cargá cada uno que entra con "+ Ingreso".</td></tr>'}
+    <td>${a.total&&a.auto?`<span class="chip ${a.hechos>=a.total?'ok':'acc'}">${a.hechos} de ${a.total} listas</span>
+      <div style="margin-top:4px">${a.L.map(i=>`<div class="mono" style="font-size:12px">✅ ${esc(i.id)} · ${esc(i.informe)}${i.pdf?' 📄':''}</div>`).join('')}${a.man?`<div class="mono" style="font-size:12px">✅ ${a.man} marcada${a.man>1?'s':''} a mano</div>`:''}${Array.from({length:Math.max(0,a.total-a.hechos)},(_,k)=>`<div class="mono" style="font-size:12px;color:var(--muted)">⬜ ${a.hechos+k+1}</div>`).join('')}</div>
+      <div style="display:flex;gap:4px;margin-top:4px">${a.hechos<a.total?`<button class="btn small" data-ingmas="${esc(x.id)}|1">+1 lista</button>`:''}${a.man?`<button class="btn small" data-ingmas="${esc(x.id)}|-1">−1</button>`:''}</div>`
+    :a.total?`<span class="chip ${a.hechos>=a.total?'ok':'acc'}">${a.hechos} de ${a.total} hechos</span>${a.L.length?`<details${a.hechos<a.total?' open':''}><summary class="eyebrow" style="cursor:pointer">tocá cada ID cuando la calibres</summary>${a.L.map(i=>`<button class="btn small" style="min-height:28px;margin:2px 0;font-family:var(--f-mono)" data-ingtog="${esc(x.id)}|${esc(i.id)}"${i.informe&&i.informe!=='✓ marcada'?' disabled title="ya tiene informe"':''}>${i.informe?'✅ <s>'+esc(i.id)+'</s> '+esc(i.informe):'⬜ '+esc(i.id)}</button>`).join('<br>')}</details>`:`<div style="display:flex;gap:4px;margin-top:4px"><button class="btn small" data-ingmas="${esc(x.id)}|1">+1 hecha</button><button class="btn small" data-ingmas="${esc(x.id)}|-1">−1</button></div>`}`:'<span class="empty">—</span>'}</td>
+    <td>${esc(x.motivo||'')}</td><td>${esc(x.estado||'Ingresado')}</td><td>${esc(x.responsable||'')}</td><td><button class="btn small primary" data-entregado="${esc(x.id)}">Entregado ✅</button> <button class="btn small" data-edit="ing:${esc(x.id)}">Editar</button> <button class="btn small" data-remito="${esc(x.id)}">Remito</button></td></tr>`}).join('')||'<tr><td colspan="9" class="empty">No hay equipos en el taller. Cargá cada uno que entra con "+ Ingreso".</td></tr>'}
   </tbody></table></div>`;
 }
 const DIAS=['dom','lun','mar','mié','jue','vie','sáb'];
@@ -577,7 +599,7 @@ const FORMS={
   vis:['Visita',[['fecha','Fecha','date'],['hora','Hora (opcional)','time'],['tecnico','Técnico','sel:'+TECNICOS.join('|')],['cliente','Cliente','cli'],['tareas','Qué va a hacer (ej. centrífugas, preventivo heladera)','text'],['notas','Notas','area'],['hecho','Visita hecha','check']]],
   ent:['Para llevar / retirar',[['tipo','Tipo','sel:Entregar|Retirar|Llevar material'],['cliente','Cliente','cli'],['que','Qué (ej. 5 termómetros calibrados)','text'],['responsable','Quién lo tiene / lo preparó','sel:'+TECNICOS.join('|')],['notas','Notas','area']]],
   tar:['Tarea',[['texto','Qué hay que hacer (ej. Centrífuga caseros, revisar cierre)','text'],['cliente','Cliente (opcional)','cli'],['responsable','Quién','sel:|'+TECNICOS.join('|')],['para','Para cuándo','date'],['prioridad','Prioridad','sel:Normal|Urgente'],['notas','Notas','area']]],
-  ing:['Ingreso al taller',[['fecha','Fecha de ingreso','date'],['cliente','Cliente','cli'],['equipo','Qué entró (ej. micropipetas, termómetros, centrífuga)','text'],['cantidad','Cantidad','number'],['ids','IDs / N° de serie (uno por línea; se tachan solos cuando se hace el informe)','area'],['trajo','Quién lo trajo','sel:|'+TECNICOS.join('|')],['remito','N° de recibo / remito del cliente','text'],['serie','ID (si es un solo equipo)','text'],['motivo','Motivo (calibración, reparación…)','text'],['responsable','Quién lo tiene','sel:|'+TECNICOS.join('|')],['prioridad','Prioridad','sel:Normal|Urgente'],['estado','Estado','sel:Ingresado|En revisión|Esperando repuesto|Listo para entregar|Entregado'],['notas','Notas','area']]],
+  ing:['Ingreso al taller',[['fecha','Fecha de ingreso','date'],['cliente','Cliente (y sede si hay, ej. Maipú Vicente López)','cli'],['equipo','Qué entró (ej. micropipetas, termómetros, centrífuga)','text'],['cantidad','Cantidad','number'],['ids','IDs (OPCIONAL: si no los ponés, se completan solos con los informes que se hagan de ese cliente)','area'],['trajo','Quién lo trajo','sel:|'+TECNICOS.join('|')],['remito','N° de recibo / remito del cliente','text'],['serie','ID (si es un solo equipo)','text'],['motivo','Motivo (calibración, reparación…)','text'],['responsable','Quién lo tiene','sel:|'+TECNICOS.join('|')],['prioridad','Prioridad','sel:Normal|Urgente'],['estado','Estado','sel:Ingresado|En revisión|Esperando repuesto|Listo para entregar|Entregado'],['notas','Notas','area']]],
   evt:['Trabajo hecho a un equipo',[['equipo_id','ID del equipo (ej. IA-194)','text'],['fecha','Fecha','date'],['tipo','Tipo','sel:Preventivo|Correctivo|Calibración|Verificación|Validación|Otro'],['cliente','Cliente','cli'],['detalle','Qué se hizo (ej. cambio de carbones)','text'],['quien','Quién lo hizo','sel:|'+TECNICOS.join('|')],['informe','N° de informe (si hay)','text'],['notas','Notas','area']]],
   rec:['Recordatorio',[['texto','Recordarme…','text'],['cuando','Cuándo','datetime-local'],['para','Para quién','sel:Todos|'+TECNICOS.join('|')],['repetir','Repetir','sel:|cada semana|cada mes|cada año'],['notas','Notas','area']]]
 };
@@ -983,6 +1005,9 @@ function bind(){
     const s=new Set(x.hechos_manual||[]); s.has(serial)?s.delete(serial):s.add(serial); await guardar('ing',iid,Object.assign({},x,{hechos_manual:[...s]})); });
   M.querySelectorAll('[data-ingmas]').forEach(b=>b.onclick=async()=>{ const [iid,d]=b.dataset.ingmas.split('|'); const x=S.ing[iid]; if(!x) return;
     const n=Math.max(0,Math.min(Number(x.cantidad)||0,(Number(x.hechas_sin_id)||0)+Number(d))); await guardar('ing',iid,Object.assign({},x,{hechas_sin_id:n})); });
+  M.querySelectorAll('[data-entregado]').forEach(b=>b.onclick=async()=>{ const iid=b.dataset.entregado, x=S.ing[iid]; if(!x) return;
+    if(!confirm(`¿Marcar como entregado: ${x.cliente} · ${x.equipo||''}?`)) return;
+    await guardar('ing',iid,Object.assign({},x,{estado:'Entregado',estado_desde:iso(HOY),fecha_entrega:iso(HOY)})); });
   M.querySelectorAll('[data-remito]').forEach(b=>b.onclick=()=>remito(b.dataset.remito));
   M.querySelectorAll('[data-pnew]').forEach(b=>b.onclick=()=>editarPrest(null));
   M.querySelectorAll('[data-pedit]').forEach(b=>b.onclick=()=>editarPrest(b.dataset.pedit));
