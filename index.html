@@ -369,6 +369,31 @@ function vCal(){
 // ---- Agenda: visitas (cronograma), cosas para llevar/retirar y recordatorios.
 // Clave del sistema: si hay una visita programada a un cliente que tiene algo pendiente de entregar, avisar "aprovechar viaje".
 const TECNICOS=['Melina','Jorge','Lucho','Maxi','Claudio'];
+// Quién es quién (por el email con el que entra). "foco" = lo que esa persona ve primero en Inicio.
+// Para sumar a alguien: agregar su email acá (y crearle el usuario en Supabase → Authentication → Users).
+const PERFILES={
+  'de_antoni@hotmail.com':{nombre:'Claudio',foco:null},          // ve todo, panel general
+  // 'mail-de-meli':{nombre:'Melina',foco:['Micropipeta','Termómetro']},
+  // 'mail-de-jorge':{nombre:'Jorge',foco:['Micropipeta']},
+  // 'mail-de-lucho':{nombre:'Lucho',foco:['Centrífuga']},
+  // 'mail-de-maxi':{nombre:'Maxi',foco:null},
+};
+const yo=()=>{ const e=(S.email||'').toLowerCase();
+  if(e==='prueba-meli') return {nombre:'Melina',foco:['Micropipeta','Termómetro']}; // solo para probar en la compu (?local&como=prueba-meli)
+  return PERFILES[e]||{nombre:'',foco:null}; };
+const esDeFoco=(texto,foco)=>foco&&foco.some(a=>new RegExp(a==='Micropipeta'?'micro|pipeta':a==='Termómetro'?'term[oó]m|datalog':'centr[ií]f','i').test(texto||''));
+// "Lo tuyo": arriba de todo en Inicio, solo lo de las áreas de esa persona (ej. Meli: micropipetas y termómetros)
+function cardLoTuyo(){
+  const p=yo(); if(!p.foco) return '';
+  const y=HOY.getFullYear(), m=HOY.getMonth();
+  const ING=ingresosAbiertos().filter(x=>esDeFoco(x.equipo,p.foco)||x.responsable===p.nombre).map(x=>({x,a:avance(x)}));
+  const V=vencimientos().filter(v=>p.foco.includes(v.area)&&!v.rehecha&&((v.prox.getFullYear()===y&&v.prox.getMonth()===m)||(v.dias<0&&v.dias>=-240)));
+  const T=Object.values(S.tar).filter(t=>t.estado!=='hecho'&&!t.borrado&&t.responsable===p.nombre);
+  return `<div class="card" style="border:2px solid var(--accent)"><h2>⭐ Lo tuyo (${p.foco.map(a=>a.toLowerCase()+'s').join(' y ')})</h2>
+    <div style="font-weight:600;margin:4px 0">En el taller</div>${ING.length?`<div class="list">${ING.map(({x,a})=>`<div class="row"><span class="grow">${esc(x.cliente)} · ${esc(x.equipo||'')}</span><span class="chip ${ingListo(x,a)?'ok':'acc'}">${a.total?a.hechos+' de '+a.total:'?'}</span></div>`).join('')}</div>`:'<p class="empty" style="margin:0">Nada en el taller.</p>'}
+    <div style="font-weight:600;margin:10px 0 4px">Para hacer este mes</div>${V.length?`<div class="list">${cnt(V,v=>v.cliente).map(([c,n])=>`<div class="row"><span class="grow">${esc(c)}</span><span class="chip ${V.some(v=>v.cliente===c&&v.dias<0)?'bad':'warn'}">${n}</span></div>`).join('')}</div><button class="btn small" data-go="pendientes" style="margin-top:6px">Ver detalle</button>`:'<p class="empty" style="margin:0">Nada.</p>'}
+    ${T.length?`<div style="font-weight:600;margin:10px 0 4px">Tus tareas</div><div class="list">${T.map(t=>`<div class="row"><span class="grow">${t.prioridad==='Urgente'?'<span class="chip bad">Urgente</span> ':''}${esc(t.texto)}</span></div>`).join('')}</div>`:''}</div>`;
+}
 const COLS={vis:'visitas',ent:'entregas',rec:'recordatorios',tar:'tareas',ing:'ingresos',prest:'prestamos',pag:'pagos',avp:'avisos',evt:'eventos'};
 // ---- Buscar equipo: historial completo de un equipo por su ID (como la base de la UTN por n° UTN).
 // "194" encuentra IA-194, IA 194, IA-194 Rossi…; "hj123" encuentra HJ123. Junta todas las fuentes.
@@ -516,7 +541,8 @@ function vAgenda(modo){
   const porCli={}; E.forEach(e=>(porCli[e.cliente||'(sin cliente)']=porCli[e.cliente||'(sin cliente)']||[]).push(e));
   const tp=Object.values(S.tar).filter(t=>t.estado!=='hecho'&&!t.borrado).length, enT=ingresosAbiertos().length;
   const fecha=HOY.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
-  return (modo==='inicio'?`<div class="head"><div style="flex:1;min-width:200px"><div class="eyebrow">${fecha}</div><h1>Hola 👋</h1></div></div>
+  return (modo==='inicio'?`<div class="head"><div style="flex:1;min-width:200px"><div class="eyebrow">${fecha}</div><h1>Hola${yo().nombre?', '+esc(yo().nombre):''} 👋</h1></div></div>
+    ${cardLoTuyo()}
     <section class="kpis">
       <button class="kpi" data-go="ingresos" style="text-align:left;cursor:pointer"><div class="l">En el taller</div><div class="v">${enT}</div><div class="n">ingresos abiertos</div></button>
       <button class="kpi" data-go="tareas" style="text-align:left;cursor:pointer"><div class="l">Tareas</div><div class="v">${tp}</div><div class="n">pendientes</div></button>
@@ -1017,7 +1043,8 @@ function vLogin(msg){
 async function arrancar(){
   document.querySelector('.app').hidden=false;
   const {data:{session}}=await sb.auth.getSession();
-  $('#userbox').hidden=false; $('#useremail').textContent=session?session.user.email:'';
+  S.email=session?session.user.email:'';
+  $('#userbox').hidden=false; $('#useremail').textContent=S.email;
   $('#logout').onclick=async()=>{ await sb.auth.signOut(); location.reload(); };
   $('#main').innerHTML='<p class="empty">Cargando informes…</p>';
   try{ [S.base,S.trab,S.term]=await Promise.all([cargarTabla('informes'),cargarTabla('trabajos'),cargarTabla('termometros')]); S.trab=S.trab.filter(t=>!t.reemplazado); }catch(e){ $('#main').innerHTML='<div class="banner">No se pudieron cargar los informes. Revisá la conexión y recargá la página.</div>'; return; }
@@ -1042,7 +1069,7 @@ async function init(){
     S.base=await (await fetch('historial.json')).json(); S.trab=await (await fetch('trabajos.json')).json();
     S.term=await (await fetch('termometros.json')).json();
     try{ S.trab=S.trab.concat(await (await fetch('trabajos_whatsapp.json')).json()); }catch(e){}
-    S.db=memDB(); S.dbChecked=true;
+    S.db=memDB(); S.dbChecked=true; S.email=new URLSearchParams(location.search).get('como')||''; // ?local&como=email para probar perfiles
     for(const p of await (await fetch('prestamos.json')).json()) await S.db.doc('prestamos/'+p.id.replace(/\s+/g,'')).set(p);
     try{ for(const p of await (await fetch('pagos.json')).json()) await S.db.doc('pagos/'+p.id).set(p); }catch(e){}
     escucharAgenda(); render(); return;
