@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pedir un servicio · Mitash</title>
+<meta name="description" content="Pedí calibración, reparación o mantenimiento preventivo de tus equipos de laboratorio.">
+<!-- vista previa al compartir el link por WhatsApp -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Mitash">
+<meta property="og:title" content="Mitash · Pedir un servicio">
+<meta property="og:description" content="Calibración, reparación y mantenimiento preventivo de equipos de laboratorio. Completá el formulario y te contactamos.">
+<meta property="og:url" content="https://mitash-lab.github.io/solicitud.html">
+<meta property="og:image" content="https://mitash-lab.github.io/icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta name="theme-color" content="#0f6e6e">
+<link rel="icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--bg:#f4f6f6;--panel:#fff;--ink:#15201f;--muted:#5f6b6a;--line:#dfe5e4;--accent:#0f6e6e;--soft:#e6f1f0;--bad:#a12a2a;--ok:#1d6b35}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 'IBM Plex Sans',system-ui,sans-serif}
+main{max-width:600px;margin:0 auto;padding:24px 16px 60px}
+.brand{color:var(--accent);font-weight:600;font-size:24px}
+h1{font-size:22px;margin:4px 0 6px} p{color:var(--muted);margin:0 0 18px}
+form{display:grid;gap:14px}
+fieldset{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;margin:0;display:grid;gap:14px;min-width:0}
+legend{font-weight:600;padding:0 6px;color:var(--accent)}
+label{display:grid;gap:6px;font-weight:500} label small{font-weight:400;color:var(--muted)}
+input,select,textarea{font:inherit;border:1px solid var(--line);border-radius:10px;padding:11px 12px;background:#fff;width:100%;color:inherit}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--soft)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:480px){.row{grid-template-columns:1fr}}
+.eq{border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;gap:12px;position:relative;background:#fbfcfc}
+.eq h3{margin:0;font-size:15px}
+.quitar{position:absolute;top:8px;right:8px;background:none;color:var(--muted);border:0;font-size:22px;line-height:1;padding:4px 8px;cursor:pointer}
+.opciones{display:flex;flex-wrap:wrap;gap:8px}
+.opciones label{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:99px;padding:6px 12px;font-weight:400;cursor:pointer;background:#fff}
+.opciones label:has(input:checked){border-color:var(--accent);background:var(--soft)}
+.opciones input{width:auto;margin:0}
+.check{display:flex;gap:10px;align-items:flex-start;font-weight:400}
+.check input{width:auto;margin-top:5px}
+button{font:inherit;font-weight:600;background:var(--accent);color:#fff;border:0;border-radius:10px;padding:13px;cursor:pointer}
+button.sec{background:#fff;color:var(--accent);border:1px dashed var(--accent)}
+button:disabled{opacity:.6}
+.msg{min-height:20px;font-size:14px} .msg.err{color:var(--bad)}
+.hecho{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px;text-align:center}
+.hecho b{color:var(--ok);font-size:20px;display:block;margin-bottom:8px}
+.hp{position:absolute;left:-5000px}
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">Mitash</div>
+  <h1>Pedir un servicio</h1>
+  <p>Completá el formulario y te contactamos para coordinar. Calibración, reparación y mantenimiento preventivo de equipos de laboratorio.</p>
+  <form id="f" novalidate>
+    <fieldset>
+      <legend>1 · Cliente</legend>
+      <label>Laboratorio / institución *<input name="cliente" required maxlength="120" autocomplete="organization" placeholder="Ej.: Hospital Maipú"></label>
+      <label>Sede * <small>Si tienen una sola, poné "Única"</small><input name="sede" required maxlength="120" placeholder="Ej.: Martínez, San Isidro, Laboratorio central…"></label>
+      <label>Dirección de la sede * <small>Calle, número y localidad</small><input name="direccion" required maxlength="200" autocomplete="street-address" placeholder="Ej.: Av. Santa Fe 1234, Martínez"></label>
+    </fieldset>
+
+    <fieldset>
+      <legend>2 · Equipos</legend>
+      <div id="equipos" style="display:grid;gap:12px"></div>
+      <button type="button" class="sec" id="otro">+ Agregar otro equipo</button>
+    </fieldset>
+
+    <fieldset>
+      <legend>3 · Detalles y contacto</legend>
+      <label>Otros detalles <small>Qué le pasa al equipo, cuándo lo pueden traer o retirar, lo que quieras contarnos</small>
+        <textarea name="detalle" rows="3" maxlength="2000"></textarea></label>
+      <div class="row">
+        <label>Tu nombre<input name="contacto" maxlength="80" autocomplete="name"></label>
+        <label>Teléfono / WhatsApp<input name="telefono" maxlength="40" inputmode="tel" autocomplete="tel"></label>
+      </div>
+      <label>Email<input name="email" type="email" maxlength="120" autocomplete="email"></label>
+      <label class="check"><input type="checkbox" name="recordar" checked> Avisarme cuando toque la próxima calibración de estos equipos</label>
+    </fieldset>
+
+    <input class="hp" name="web" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <div class="msg" id="msg" role="alert"></div>
+    <button id="enviar" type="submit">Enviar pedido</button>
+  </form>
+</main>
+<script>
+const TIPOS = ['Micropipeta','Termómetro','Centrífuga','Cabina / campana','Estufa / heladera / freezer','Autoclave','Bomba de infusión','Otro'];
+const SERVICIOS = ['Calibración','Reparación','Mantenimiento preventivo','Presupuesto'];
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const f = document.getElementById('f'), msg = document.getElementById('msg'), btn = document.getElementById('enviar');
+const caja = document.getElementById('equipos');
+let n = 0;
+
+// El link puede venir con datos ya cargados: solicitud.html?cliente=Hospital%20Maipú&sede=Martínez&tipo=Termómetro
+const P = new URLSearchParams(location.search);
+['cliente','sede','direccion'].forEach(k => { if (P.get(k)) f.elements[k].value = P.get(k).slice(0,120); });
+
+function agregar(prev = {}){
+  n++;
+  const d = document.createElement('div'); d.className = 'eq'; d.dataset.n = n;
+  d.innerHTML = `<h3>Equipo</h3>${caja.children.length ? '<button type="button" class="quitar" aria-label="Quitar equipo">×</button>' : ''}
+    <div class="row">
+      <label>Tipo de equipo *<select name="tipo"><option value="">Elegí</option>${TIPOS.map(t=>`<option ${prev.tipo===t?'selected':''}>${t}</option>`).join('')}</select></label>
+      <label>ID / identificación * <small>El código que tiene el equipo</small><input name="id" maxlength="60" value="${esc(prev.id||'')}" placeholder="Ej.: 820, TH-1, M-15"></label>
+    </div>
+    <div class="row">
+      <label>N° de serie<input name="serie" maxlength="60"></label>
+      <label>Marca / modelo<input name="marca" maxlength="80"></label>
+    </div>
+    <div><div style="font-weight:500;margin-bottom:8px">¿Qué necesita? *</div>
+      <div class="opciones">${SERVICIOS.map((s,i)=>`<label><input type="radio" name="serv${n}" value="${s}" ${i===0?'checked':''}> ${s}</label>`).join('')}</div></div>`;
+  caja.appendChild(d);
+  const q = d.querySelector('.quitar'); if (q) q.onclick = () => d.remove();
+  return d;
+}
+agregar({tipo: TIPOS.includes(P.get('tipo')) ? P.get('tipo') : ''});
+document.getElementById('otro').onclick = () => {
+  const ult = caja.lastElementChild;                       // el nuevo arranca con el mismo tipo que el anterior
+  const d = agregar({tipo: ult ? ult.querySelector('[name=tipo]').value : ''});
+  d.querySelector('[name=id]').focus();
+};
+
+const error = t => { msg.className = 'msg err'; msg.textContent = t; btn.disabled = false; };
+f.onsubmit = async e => {
+  e.preventDefault();
+  const d = Object.fromEntries(new FormData(f).entries());
+  if (d.web) return;                                        // trampa para robots
+  if (!d.cliente || d.cliente.trim().length < 2) return error('Escribí el nombre del laboratorio o institución.');
+  if (!d.sede || !d.sede.trim()) return error('Escribí la sede (o "Única" si tienen una sola).');
+  if (!d.direccion || d.direccion.trim().length < 4) return error('Escribí la dirección de la sede.');
+  const items = [...caja.children].map(x => ({
+    tipo: x.querySelector('[name=tipo]').value, id: x.querySelector('[name=id]').value.trim(),
+    serie: x.querySelector('[name=serie]').value.trim(), marca: x.querySelector('[name=marca]').value.trim(),
+    servicio: (x.querySelector('input[type=radio]:checked') || {}).value || 'Calibración'}))
+    .filter(i => i.tipo || i.id || i.serie || i.marca);
+  if (!items.length) return error('Cargá al menos un equipo.');
+  const falta = items.findIndex(i => !i.tipo || (!i.id && !i.serie));
+  if (falta >= 0) return error(`Al equipo ${falta+1} le falta el tipo o el ID (si no tiene ID, poné el n° de serie).`);
+  if (!d.telefono && !d.email) return error('Dejanos un teléfono o un email para contactarte.');
+  btn.disabled = true; msg.className = 'msg'; msg.textContent = 'Enviando…';
+  const pedido = [...new Set(items.map(i => i.servicio))].join(', ').slice(0, 60);
+  const tipos = [...new Set(items.map(i => i.tipo))].join(', ');
+  const fila = {cliente: d.cliente.trim(), sede: d.sede.trim(), direccion: d.direccion.trim(), contacto: d.contacto || null, telefono: d.telefono || null,
+    email: d.email || null, tipo_equipo: tipos.slice(0, 120), items, recordar: !!d.recordar, pedido,
+    equipos: items.map(i => `${i.tipo} ${i.id || 'SN ' + i.serie}`).join(' · ').slice(0, 300), detalle: d.detalle || null};
+  let res;
+  try {
+    const sb = window.supabase.createClient('https://wjebfabcivxmeohyfpxm.supabase.co', 'sb_publishable_OwWLV4rfTm58MB7rouvJnw_TDEBfU6J',
+      {auth: {persistSession: false}});
+    res = await sb.from('solicitudes').insert(fila);
+  } catch (x) { res = {error: x}; }
+  if (res.error) return error('No se pudo enviar. Probá de nuevo en un rato o escribinos por WhatsApp.');
+  document.querySelector('main').innerHTML = `<div class="brand">Mitash</div><div class="hecho" style="margin-top:20px"><b>¡Pedido enviado!</b>
+    Recibimos ${items.length} equipo${items.length > 1 ? 's' : ''} de <b style="display:inline;color:inherit;font-size:inherit">${esc(fila.cliente)} · ${esc(fila.sede)}</b>.
+    Te contactamos a la brevedad para coordinar.${fila.recordar ? '<br><br>Te vamos a avisar cuando toque la próxima calibración.' : ''}</div>`;
+};
+</script>
+</body>
+</html>

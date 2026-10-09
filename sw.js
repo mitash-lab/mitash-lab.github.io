@@ -1,7 +1,7 @@
 // Service worker mínimo: permite instalar la web como app y abrirla aunque la señal sea mala.
 // Siempre pide la versión nueva a la red (sin caché del navegador) y usa la copia guardada solo si no hay conexión.
-const CACHE = 'mitash-v5';
-const BASICOS = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'mitash-v7';
+const BASICOS = ['./', 'index.html', 'v5.html', 'solicitud.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(BASICOS)).then(() => self.skipWaiting()));
