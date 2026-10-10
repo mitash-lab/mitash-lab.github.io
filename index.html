@@ -147,7 +147,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.4';
+const VERSION = 'v7.6';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -179,7 +179,7 @@ const PERFILES = { 'de_antoni@hotmail.com':'Claudio' };   // email -> nombre (su
 const PUBLIC_FORM = 'https://mitash-lab.github.io/solicitud.html';
 const linkForm = (cliente, sede) => PUBLIC_FORM + (cliente ? '?' + new URLSearchParams(Object.entries({cliente, sede}).filter(([,v]) => v)).toString() : '');
 
-const S = { view:(location.hash||'#taller').slice(1), equipos:[], servicios:[], tallerDb:[], sol:[], vis:{}, r:0,
+const S = { view:(location.hash||'#taller').slice(1), equipos:[], servicios:[], tallerDb:[], sol:[], vis:{}, contactos:{}, internos:{}, r:0,
   f:{ tal:'hacer', cat:'', ven:MES, ped:'abiertos' } };
 
 // ---------------------------------------------------------------- datos (Supabase)
@@ -224,9 +224,13 @@ async function cargarTodo(){
                            : await Promise.all([cargarTabla('informes'), cargarTabla('termometros')]);
   armarBase(inf, ter);
   if(LOCAL){ demo(); S.solOk=true; return; }
-  await Promise.all([cargarTaller(),cargarSol(),cargarVis()]);
+  await Promise.all([cargarTaller(),cargarSol(),cargarVis(),cargarCol('contactos'),cargarCol('internos')]);
 }
-const sinVacios = o => Object.fromEntries(Object.entries(o).filter(([,v])=>v!=null && v!==''));
+// Colecciones simples en "docs": contactos de clientes y equipos internos de Mitash (patrones, termómetros de referencia...)
+async function cargarCol(col){ if(LOCAL) return; const {data,error}=await sb.from('docs').select('id,data').eq('coleccion',col); if(!error) S[col]=Object.fromEntries(data.map(d=>[d.id,d.data])); }
+async function docSet(col, id, d){ if(!LOCAL){ const {error}=await sb.from('docs').upsert({coleccion:col,id,data:d}); if(error){ alert('No se pudo guardar: '+error.message); return false; } } S[col][id]=d; return true; }
+async function docDel(col, id){ if(!LOCAL){ const {error}=await sb.from('docs').delete().eq('coleccion',col).eq('id',id); if(error){ alert('No se pudo borrar: '+error.message); return; } } delete S[col][id]; }
+const sinVacios = o =>Object.fromEntries(Object.entries(o).filter(([,v])=>v!=null && v!==''));
 async function tallerInsert(filas){
   const docs = filas.map((f,i)=>({coleccion:'taller', id:'t'+Date.now()+'-'+i, data:sinVacios({...f, cargado:HOY, por:S.email||null})}));
   if(!LOCAL){ const {error}=await sb.from('docs').insert(docs); if(error){ alert('No se pudo guardar: '+error.message); return false; } }
@@ -274,7 +278,13 @@ const agrupar = (L, fk) => { const m=new Map(); L.forEach(x=>{ const k=fk(x); m.
 
 // Recorridos (visitas): qué llevar, qué retirar y qué trabajo hacer en cada lugar
 const visitas = () => Object.entries(S.vis).map(([id,v])=>({id,...v})).filter(v=>v.fecha);
-const proximas = () => visitas().filter(v=>!v.hecho && v.fecha>=sumarDias(HOY,-7)).sort((a,b)=>a.fecha.localeCompare(b.fecha)||String(a.hora||'').localeCompare(String(b.hora||'')));
+// Viajes que se repiten (cronograma de Lucho): cada semana, cada 15 días o cada mes. Cada vez se marca hecha por separado.
+const REPETIR = {'':'No se repite','7':'Todas las semanas','14':'Cada 15 días','mes':'Todos los meses'};
+function repeticiones(v){ const out=[], hasta=sumarDias(HOY,60), desde=sumarDias(HOY,-7), hechas=v.hechas||[]; let f=v.fecha, n=0;
+  while(f<=hasta && n<300){ if(f>=desde && !hechas.includes(f)) out.push({...v, id:v.id+'@'+f, base:v.id, fecha:f});
+    n++; if(v.repetir==='mes'){ const d=new Date(v.fecha+'T12:00'); d.setMonth(d.getMonth()+n); f=isoD(d); } else f=sumarDias(v.fecha,(+v.repetir)*n); }
+  return out; }
+const proximas = () => memo('prox', () => visitas().flatMap(v=>v.repetir ? repeticiones(v) : (!v.hecho && v.fecha>=sumarDias(HOY,-7) ? [v] : [])).sort((a,b)=>a.fecha.localeCompare(b.fecha)||String(a.hora||'').localeCompare(String(b.hora||''))));
 const llevarA = v => listos().filter(t=>mismoCli(t.cliente,v.cliente));
 const retirarDe = v => S.sol.filter(s=>solAbierta(s) && (v.solicitud===s.id || mismoCli(clienteSol(s),v.cliente)));
 const viajeDeSol = s => proximas().find(v=>v.solicitud===s.id);
@@ -290,13 +300,13 @@ function yo(){ return PERFILES[(S.email||'').toLowerCase()] || ''; }
 
 // ---------------------------------------------------------------- vistas
 // Simple: 3 pestañas. El taller es la pantalla principal.
-const TABS = [['taller','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18"/></svg>','Taller'],['vencimientos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>','Vencimientos'],['pedidos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4z"/></svg>','Pedidos']];
+const TABS = [['taller','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18"/></svg>','Taller'],['recorridos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h11v10H3zM14 9h4l3 3v4h-7"/><circle cx="7" cy="17.5" r="1.5"/><circle cx="17" cy="17.5" r="1.5"/></svg>','Viajes'],['vencimientos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>','Vencimientos'],['pedidos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4z"/></svg>','Pedidos']];
 function render(){
   S.r++;
   const nPed = S.sol.filter(s=>s.estado==='nueva').length;
   const vista = S.view.split('/')[0]==='inicio' ? 'taller' : S.view.split('/')[0];
   $('#tabs').innerHTML = TABS.filter(([v])=>v!=='pedidos' || S.solOk).map(([v,i,t])=>`<a href="#${v}" class="${vista===v?'on':''}"><span class="i">${i}</span>${t}${v==='pedidos'&&nPed?`<span class="dot">${nPed}</span>`:''}</a>`).join('');
-  const V = {taller:vTaller, recorridos:vRecorridos, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
+  const V = {taller:vTaller, recorridos:vRecorridos, contactos:vContactos, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
   $('#main').innerHTML = V(); bind();
 }
 window.addEventListener('hashchange', () => { S.view = location.hash.slice(1)||'inicio'; render(); window.scrollTo(0,0); });
@@ -309,7 +319,7 @@ function tarjetaViaje(v){
   return `<div class="card trip ${v.fecha<=HOY?'hoy':''}">
     <div class="row"><div class="grow"><div class="when">${cuando(v.fecha)}${v.hora?' · '+esc(v.hora):''}${v.fecha<HOY?' · pendiente':''}</div>
       <div class="cli">${esc(v.cliente)}${v.sede?` <span class="muted" style="font-weight:500">· ${esc(v.sede)}</span>`:''}</div>
-      <div class="small muted">${esc(v.tecnico||'Lucho')}</div></div>
+      <div class="small muted">${esc(v.tecnico||'Lucho')}${v.repetir?' · '+REPETIR[v.repetir].toLowerCase():''}</div></div>
       <button class="btn sm" data-evis="${esc(v.id)}">Editar</button></div>
     <div class="todo">
       ${v.tareas?`<div><div><b>Trabajo</b>${esc(v.tareas)}</div></div>`:''}
@@ -330,7 +340,8 @@ function vTaller(){
   return `<div class="row"><div class="grow"><h1>Taller</h1></div><button class="btn pri" data-ning>+ Ingreso</button></div>
   <div class="stats" id="segtal" style="grid-template-columns:repeat(3,1fr);margin:12px 0 16px">${[['hacer','Para calibrar','acc'],['listo','Para entregar','ok'],['entregado','Entregados','']].map(([k,t,c])=>
     `<button class="stat ${c}" data-v="${k}" style="text-align:left;font:inherit;${f.tal===k?'outline:2px solid var(--acc);':'opacity:.75;'}"><div class="k">${t}</div><div class="v">${n(k)}</div></button>`).join('')}</div>
-  ${grupos.length ? grupos.map(([c,X])=>`<div class="card"><div class="cli">${esc(c)}</div>${lotes(X).map(lote).join('')}</div>`).join('')
+  ${grupos.length ? grupos.map(([c,X])=>{ const v = f.tal==='listo' && viajePara(c);
+      return `<div class="card"><div class="row"><div class="grow cli">${esc(c)}</div>${f.tal!=='listo' ? '' : v ? `<span class="tag acc">Viaje ${cuando(v.fecha).toLowerCase()} · ${esc(v.tecnico||'Lucho')}</span>` : `<button class="btn sm" data-nvis-cli="${esc(c)}">Agendar entrega</button>`}</div>${lotes(X).map(lote).join('')}</div>`; }).join('')
     : `<div class="card flat empty">${f.tal==='hacer'?'No hay nada para calibrar.':f.tal==='listo'?'No hay nada listo para entregar.':'Sin entregas en los últimos 2 meses.'}</div>`}`;
 }
 function lote(X){
@@ -361,20 +372,79 @@ async function accionTaller(ids, acc){
 
 function vRecorridos(){
   const P = proximas(), hechos = visitas().filter(v=>v.hecho).sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,10);
-  return `<div class="row"><div class="grow"><h1>Recorridos</h1></div><button class="btn pri" data-nvis>+ Viaje</button></div>
+  return `<div class="row"><div class="grow"><h1>Viajes</h1></div><button class="btn pri" data-nvis>+ Viaje</button></div>
   <p class="sub">A dónde hay que ir y qué llevar, retirar o hacer en cada lugar.</p>
   ${P.length ? agrupar(P, v=>v.fecha).map(([f,V])=>V.map(tarjetaViaje).join('')).join('') : `<div class="card flat empty">No hay viajes cargados.<br><span class="small">Cargá los recorridos de Lucho con "+ Viaje".</span></div>`}
   ${hechos.length?`<details class="card flat"><summary class="click"><b>Viajes hechos</b> <span class="muted">· últimos ${hechos.length}</span></summary><div class="list" style="margin-top:8px">${hechos.map(v=>`<div><div class="grow"><b>${esc(v.cliente)}</b> <span class="small muted">${fmtA(v.fecha)} · ${esc(v.tecnico||'')}</span><div class="small muted">${esc(v.resumen||v.tareas||'')}</div></div><button class="btn sm" data-evis="${esc(v.id)}">Ver</button></div>`).join('')}</div></details>`:''}`;
 }
 
+// Equipos internos de Mitash: próxima = última calibración + frecuencia
+const internos = () => Object.entries(S.internos).map(([id,x])=>{ const d=new Date((x.ultima||HOY)+'T12:00'); d.setMonth(d.getMonth()+(+x.frecuencia||12)); return {id,...x,proxima:isoD(d)}; })
+  .sort((a,b)=>a.proxima.localeCompare(b.proxima));
+const internosAvisar = () => internos().filter(x=>x.proxima<=sumarDias(HOY,45));
+function vInternos(){
+  const L = internos();
+  return `<div class="row" style="margin-bottom:12px"><div class="grow small muted">Patrones y equipos propios de Mitash. Se avisa 45 días antes del vencimiento.</div><button class="btn sm pri" data-nint>+ Equipo interno</button></div>
+  ${L.length ? `<div class="card"><div class="list">${L.map(x=>`<div class="click" data-eint="${esc(x.id)}"><div class="grow"><b>${esc(x.nombre)}</b> <span class="mono small muted">${esc(x.codigo||'')}</span>
+      <div class="small muted">Última ${fmtA(x.ultima)}${x.certificado?' · cert. '+esc(x.certificado):''}${x.lugar?' · '+esc(x.lugar):''}</div></div>
+      <span class="tag ${x.proxima<HOY?'bad':x.proxima<=sumarDias(HOY,45)?'warn':'ok'}">${x.proxima<HOY?'vencido':'vence'} ${fmtA(x.proxima)}</span></div>`).join('')}</div></div>`
+    : '<div class="card flat empty">Todavía no hay equipos internos cargados.</div>'}`;
+}
+function formInterno(id){
+  const x = id ? S.internos[id] : {frecuencia:12, ultima:HOY};
+  hoja(`<div class="hd"><h2>${id?'Equipo interno':'Nuevo equipo interno'}</h2><button class="ibtn" data-cerrar aria-label="Cerrar">×</button></div>
+  <form class="f" id="fint">
+    <label>Equipo<input name="nombre" required value="${esc(x.nombre||'')}" placeholder="Ej.: Balanza analítica, termómetro patrón"></label>
+    <div class="two"><label>Código / ID<input name="codigo" value="${esc(x.codigo||'')}"></label><label>N° de certificado<input name="certificado" value="${esc(x.certificado||'')}"></label></div>
+    <div class="two"><label>Última calibración<input name="ultima" type="date" required value="${esc(x.ultima||'')}"></label><label>Cada (meses)<input name="frecuencia" type="number" min="1" max="60" value="${esc(x.frecuencia||12)}"></label></div>
+    <div class="two"><label>Quién lo calibra<input name="proveedor" value="${esc(x.proveedor||'')}" placeholder="Ej.: INTI"></label><label>Dónde está<input name="lugar" value="${esc(x.lugar||'')}"></label></div>
+    <label>Notas<input name="notas" value="${esc(x.notas||'')}"></label>
+    <div class="row"><button class="btn pri" style="flex:1;justify-content:center">Guardar</button>${id?'<button type="button" class="btn" id="borint">Borrar</button>':''}</div></form>`);
+  $('#fint').onsubmit = async e => { e.preventDefault(); const d = sinVacios(Object.fromEntries(new FormData(e.target).entries()));
+    if(await docSet('internos', id||'i'+Date.now(), d)){ cerrar(); toast('Guardado'); render(); } };
+  if(id) $('#borint').onclick = async () => { if(confirm('¿Borrar este equipo interno?')){ await docDel('internos', id); cerrar(); render(); } };
+}
+// Contactos de clientes (para los avisos de próxima calibración; el bot también los usa)
+const contactos = () => Object.entries(S.contactos).map(([id,x])=>({id,...x})).sort((a,b)=>String(a.cliente).localeCompare(String(b.cliente)));
+// número para wa.me: celulares de Argentina como 549 + área + número (sin 0 ni 15)
+const waNum = t => { let d = String(t||'').replace(/\D/g,''); if(!d) return '';
+  if(d.startsWith('54')) d = d.slice(2); d = d.replace(/^0/,'').replace(/^9/,'');
+  if(d.length===12 && d.slice(2,4)==='15') d = d.slice(0,2)+d.slice(4);   // 11 15 5555-5555
+  return '549'+d; };
+const contactoDe = c =>contactos().find(x=>mismoCli(x.cliente,c) && x.telefono);
+function vContactos(){
+  const L = contactos();
+  return `<p><a href="#vencimientos">← Vencimientos</a></p><div class="row"><div class="grow"><h1>Contactos de clientes</h1></div><button class="btn pri" data-ncon>+ Contacto</button></div>
+  <p class="sub">A quién avisar de cada cliente cuando le toca la calibración.</p>
+  ${L.length ? `<div class="card"><div class="list">${L.map(x=>`<div class="click" data-econ="${esc(x.id)}"><div class="grow"><b>${esc(x.cliente)}</b>${x.sede?` <span class="muted">· ${esc(x.sede)}</span>`:''}
+      <div class="small muted">${esc([x.nombre,x.telefono,x.email].filter(Boolean).join(' · '))}</div></div>${x.avisos==='no'?'<span class="tag">sin avisos</span>':''}</div>`).join('')}</div></div>`
+    : '<div class="card flat empty">Todavía no hay contactos cargados.</div>'}`;
+}
+function formContacto(id){
+  const x = id ? S.contactos[id] : {};
+  hoja(`<div class="hd"><h2>${id?'Contacto':'Nuevo contacto'}</h2><button class="ibtn" data-cerrar aria-label="Cerrar">×</button></div>
+  <form class="f" id="fcon">
+    <label>Cliente<input name="cliente" list="dlcli" required autocomplete="off" value="${esc(x.cliente||'')}"></label>${dlClientes()}
+    <div class="two"><label>Sede (si aplica)<input name="sede" value="${esc(x.sede||'')}"></label><label>Nombre<input name="nombre" value="${esc(x.nombre||'')}"></label></div>
+    <div class="two"><label>WhatsApp<input name="telefono" inputmode="tel" value="${esc(x.telefono||'')}" placeholder="11 5555-5555"></label><label>Email<input name="email" type="email" value="${esc(x.email||'')}"></label></div>
+    <label>¿Recibe avisos de próxima calibración?<select name="avisos"><option value="si">Sí</option><option value="no" ${x.avisos==='no'?'selected':''}>No</option></select></label>
+    <div class="row"><button class="btn pri" style="flex:1;justify-content:center">Guardar</button>${id?'<button type="button" class="btn" id="borcon">Borrar</button>':''}</div></form>`);
+  $('#fcon').onsubmit = async e => { e.preventDefault(); const d = sinVacios(Object.fromEntries(new FormData(e.target).entries()));
+    if(await docSet('contactos', id||'c'+Date.now(), d)){ cerrar(); toast('Guardado'); render(); } };
+  if(id) $('#borcon').onclick = async () => { if(confirm('¿Borrar este contacto?')){ await docDel('contactos', id); cerrar(); render(); } };
+}
+
 function vVencimientos(){
   const meses = [MES, sumarMeses(MES,1), sumarMeses(MES,2)];
   const sel = S.f.ven;
+  const chipInt = `<button class="chip ${sel==='int'?'on':''}" data-v="int">Equipos internos${internosAvisar().length?' · '+internosAvisar().length:''}</button>`;
+  if(sel==='int') return `<h1>Vencimientos</h1><p class="sub">Próximas calibraciones.</p>
+    <div class="chips" id="chven"><button class="chip" data-v="atr">Atrasados</button>${meses.map(m=>`<button class="chip" data-v="${m}">${cap(mesTxt(m))}</button>`).join('')}${chipInt}</div>${vInternos()}`;
   const E = vencimientos().filter(e => sel==='atr' ? atrasado(e) : e.proxima.slice(0,7)===sel);
   const nAtr = vencimientos().filter(atrasado).length;
   const grupos = agrupar(E, e=>e.cliente+'\u0000'+(e.sector||'')).sort((a,b)=>b[1].length-a[1].length);
-  return `<h1>Vencimientos</h1><p class="sub">Próximas calibraciones de cada cliente, según la última que hicimos.</p>
-  <div class="chips" id="chven"><button class="chip ${sel==='atr'?'on':''}" data-v="atr">Atrasados · ${nAtr}</button>${meses.map(m=>`<button class="chip ${sel===m?'on':''}" data-v="${m}">${cap(mesTxt(m))} · ${vencimientos().filter(e=>e.proxima.slice(0,7)===m).length}</button>`).join('')}</div>
+  return `<h1>Vencimientos</h1><p class="sub">Próximas calibraciones de cada cliente, según la última que hicimos. <a href="#contactos">Contactos de clientes</a></p>
+  <div class="chips" id="chven"><button class="chip ${sel==='atr'?'on':''}" data-v="atr">Atrasados · ${nAtr}</button>${meses.map(m=>`<button class="chip ${sel===m?'on':''}" data-v="${m}">${cap(mesTxt(m))} · ${vencimientos().filter(e=>e.proxima.slice(0,7)===m).length}</button>`).join('')}${chipInt}</div>
   ${grupos.length ? grupos.map(([k,X])=>{ const [c,sede]=k.split('\u0000'); const v=viajePara(c); const nt=X.filter(enTaller).length;
     return `<div class="card"><div class="row"><div class="grow"><div class="cli">${esc(c)}${sede?` <span class="muted" style="font-weight:500">· ${esc(sede)}</span>`:''}</div>
       <div style="margin-top:6px">${resumenCat(X.map(e=>({cat:CAT(e.tipo)})))}${nt?` <span class="tag acc">${nt} ya en el taller</span>`:''}${v?` <span class="tag acc">${cuando(v.fecha)}</span>`:''}</div></div></div>
@@ -391,7 +461,7 @@ function avisar(k){
   const [c,sede]=k.split('\u0000'); const sel=S.f.ven;
   const E = vencimientos().filter(e=>e.cliente===c && (e.sector||'')===sede && (sel==='atr'?atrasado(e):e.proxima.slice(0,7)===sel));
   const txt = mensajeAviso(c, sede, E, sel==='atr'?sumarMeses(MES,-1):sel);
-  const ult = S.sol.filter(s=>mismoCli(clienteSol(s),c) && s.telefono)[0]; const tel = ult ? String(ult.telefono).replace(/\D/g,'') : '';
+  const ult = contactoDe(c) || S.sol.filter(s=>mismoCli(clienteSol(s),c) && s.telefono)[0]; const tel = ult ? waNum(ult.telefono) : '';
   hoja(`<div class="hd"><h2>Avisar a ${esc(c)}</h2><button class="ibtn" data-cerrar aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <p class="small muted">El mensaje lo mandás vos. El sistema no le escribe solo a los clientes.</p>
     <form class="f"><textarea rows="7" id="txtav">${esc(txt)}</textarea></form>
@@ -476,12 +546,14 @@ function formIngreso(){
 }
 
 function formViaje(id, pre){
+  if(id) id = id.split('@')[0];
   const v = id ? S.vis[id] : Object.assign({fecha:sumarDias(HOY,1), tecnico:'Lucho'}, pre||{});
   hoja(`<div class="hd"><h2>${id?'Viaje':'Nuevo viaje'}</h2><button class="ibtn" data-cerrar aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
   <form class="f" id="fvis">
     <label>Cliente<input name="cliente" list="dlcli" required autocomplete="off" value="${esc(v.cliente||'')}"></label>${dlClientes()}
     <div class="two"><label>Fecha<input name="fecha" type="date" required value="${esc(v.fecha||'')}"></label><label>Hora<input name="hora" type="time" value="${esc(v.hora||'')}"></label></div>
     <div class="two"><label>Quién va<select name="tecnico">${TECNICOS.map(t=>`<option ${v.tecnico===t?'selected':''}>${t}</option>`).join('')}</select></label><label>Sede<input name="sede" value="${esc(v.sede||'')}"></label></div>
+    <label>Se repite<select name="repetir">${Object.entries(REPETIR).map(([k,tx])=>`<option value="${k}" ${(v.repetir||'')===k?'selected':''}>${tx}</option>`).join('')}</select></label>
     <label>Trabajo a hacer allá <span style="font-weight:500">(opcional)</span><input name="tareas" value="${esc(v.tareas||'')}" placeholder="Ej.: preventivo centrífugas, cambiar termómetros"></label>
     <p class="small muted" style="margin:0">Lo listo para entregar y los pedidos a retirar de ese cliente se suman solos.</p>
     <div class="err" id="verr"></div>
@@ -489,17 +561,18 @@ function formViaje(id, pre){
   $('#fvis').onsubmit = async e => { e.preventDefault(); const d = Object.fromEntries(new FormData(e.target).entries());
     if(!d.cliente.trim()||!d.fecha){ $('#verr').textContent='Poné cliente y fecha.'; return; }
     const nid = id || 'v'+Date.now();
-    const x = Object.assign({}, id?S.vis[id]:{}, pre&&pre.solicitud?{solicitud:pre.solicitud}:{}, {cliente:d.cliente.trim(), fecha:d.fecha, hora:d.hora, tecnico:d.tecnico, sede:d.sede.trim(), tareas:d.tareas.trim()});
+    const x = Object.assign({}, id?S.vis[id]:{}, pre&&pre.solicitud?{solicitud:pre.solicitud}:{}, {cliente:d.cliente.trim(), fecha:d.fecha, hora:d.hora, tecnico:d.tecnico, sede:d.sede.trim(), tareas:d.tareas.trim(), repetir:d.repetir||''});
     if(await visSet(nid, x)){ cerrar(); toast('Viaje guardado'); render(); } };
   if(id) $('#borvis').onclick = async () => { if(confirm('¿Borrar este viaje?')){ await visDel(id); cerrar(); render(); } };
 }
 async function viajeHecho(id){
-  const v = {id, ...S.vis[id]}; const lle = llevarA(v), ret = retirarDe(v);
+  const [base, fRep] = id.split('@'); const v = {...S.vis[base], id, fecha:fRep||S.vis[base].fecha}; const lle = llevarA(v), ret = retirarDe(v);
   const partes = [];
   if(lle.length && confirm(`¿Entregaste los ${plural(lle.length,'equipo')} listos de ${v.cliente}?`)){
     await Promise.all(lle.map(t=>tallerUpdate([t.tid],{entregado:HOY, cerrado:true, informe:t.inf||null}))); partes.push(`entregó ${lle.length}`); }
   for(const s of ret){ if(itemsSol(s).length && confirm(`¿Retiraste los ${plural(itemsSol(s).length,'equipo')} del pedido de ${s.cliente}? (pasan al taller)`)){ if(await ingresarSolicitud(s.id,true)) partes.push(`retiró ${itemsSol(s).length}`); } }
-  await visSet(id, {...S.vis[id], hecho:true, resumen:[v.tareas, ...partes].filter(Boolean).join(' · ')});
+  const resumen = [v.tareas, ...partes].filter(Boolean).join(' · ');
+  await visSet(base, fRep ? {...S.vis[base], hechas:[...(S.vis[base].hechas||[]), fRep], ultimo:{fecha:fRep, resumen}} : {...S.vis[base], hecho:true, resumen});
   toast('Viaje marcado como hecho'); render();
 }
 
@@ -529,7 +602,7 @@ function buscar(){
 function menu(){
   hoja(`<div class="hd"><h2>Más</h2><button class="ibtn" data-cerrar aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div class="menu">
     <button id="mbus">Buscar equipo</button>
-    <a href="#recorridos" data-cerrar>Viajes / recorridos</a>
+        <a href="#contactos" data-cerrar>Contactos de clientes</a>
     <a href="#revisar" data-cerrar>Datos a revisar</a>
     <a href="v5.html">Versión anterior (pagos y termómetros Mitash)</a>
     <a href="${PUBLIC_FORM}" target="_blank" rel="noopener">Ver el formulario de pedidos</a>
@@ -554,6 +627,10 @@ function bind(){
   $$('[data-hvis]').forEach(el=>el.onclick = () => viajeHecho(el.dataset.hvis));
   $$('[data-eq]').forEach(el=>el.onclick = () => fichaEquipo(el.dataset.eq));
   $$('[data-aviso]').forEach(el=>el.onclick = () => avisar(el.dataset.aviso));
+  $$('[data-nint]').forEach(el=>el.onclick = () => formInterno(null));
+  $$('[data-eint]').forEach(el=>el.onclick = () => formInterno(el.dataset.eint));
+  $$('[data-ncon]').forEach(el=>el.onclick = () => formContacto(null));
+  $$('[data-econ]').forEach(el=>el.onclick = () => formContacto(el.dataset.econ));
   $$('[data-ingsol]').forEach(el=>el.onclick = async () => { if(await ingresarSolicitud(+el.dataset.ingsol)){ toast('Pasó al taller'); render(); } });
   $$('[data-retsol]').forEach(el=>el.onclick = () => { const s=S.sol.find(x=>x.id===+el.dataset.retsol);
     formViaje(null, {cliente:clienteSol(s), sede:s.sede||'', tareas:'Retirar equipos del pedido', solicitud:s.id}); });
