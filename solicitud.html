@@ -73,6 +73,12 @@ button:disabled{opacity:.6}
 
     <fieldset>
       <legend>3 · Detalles y contacto</legend>
+      <div><div style="font-weight:500;margin-bottom:8px">¿Cómo llegan los equipos? *</div>
+        <div class="opciones">
+          <label><input type="radio" name="modalidad" value="Que Mitash los retire" checked> Que Mitash los retire</label>
+          <label><input type="radio" name="modalidad" value="Los llevamos nosotros"> Los llevamos nosotros</label>
+          <label><input type="radio" name="modalidad" value="Trabajo en el lugar"> Trabajo en el lugar</label>
+        </div></div>
       <label>Otros detalles <small>Qué le pasa al equipo, cuándo lo pueden traer o retirar, lo que quieras contarnos</small>
         <textarea name="detalle" rows="3" maxlength="2000"></textarea></label>
       <div class="row">
@@ -146,7 +152,7 @@ f.onsubmit = async e => {
   const pedido = [...new Set(items.map(i => i.servicio))].join(', ').slice(0, 60);
   const tipos = [...new Set(items.map(i => i.tipo))].join(', ');
   const fila = {cliente: d.cliente.trim(), sede: d.sede.trim(), direccion: d.direccion.trim(), contacto: d.contacto || null, telefono: d.telefono || null,
-    email: d.email || null, tipo_equipo: tipos.slice(0, 120), items, recordar: !!d.recordar, pedido,
+    email: d.email || null, tipo_equipo: tipos.slice(0, 120), items, recordar: !!d.recordar, pedido, modalidad: d.modalidad || null,
     equipos: items.map(i => `${i.tipo} ${i.id || 'SN ' + i.serie}`).join(' · ').slice(0, 300), detalle: d.detalle || null};
   let res;
   try {
@@ -157,7 +163,7 @@ f.onsubmit = async e => {
   if (res.error) return error('No se pudo enviar. Probá de nuevo en un rato o escribinos por WhatsApp.');
   document.querySelector('main').innerHTML = `<div class="brand">Mitash</div><div class="hecho" style="margin-top:20px"><b>¡Pedido enviado!</b>
     Recibimos ${items.length} equipo${items.length > 1 ? 's' : ''} de <b style="display:inline;color:inherit;font-size:inherit">${esc(fila.cliente)} · ${esc(fila.sede)}</b>.
-    Te contactamos a la brevedad para coordinar.${fila.recordar ? '<br><br>Te vamos a avisar cuando toque la próxima calibración.' : ''}</div>`;
+    Te contactamos a la brevedad para coordinar${fila.modalidad === 'Que Mitash los retire' ? ' el retiro' : ''}.${fila.recordar ? '<br><br>Te vamos a avisar cuando toque la próxima calibración.' : ''}</div>`;
 };
 </script>
 </body>

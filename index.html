@@ -147,7 +147,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.6';
+const VERSION = 'v7.7';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -372,7 +372,7 @@ async function accionTaller(ids, acc){
 
 function vRecorridos(){
   const P = proximas(), hechos = visitas().filter(v=>v.hecho).sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,10);
-  return `<div class="row"><div class="grow"><h1>Viajes</h1></div><button class="btn pri" data-nvis>+ Viaje</button></div>
+  return `<div class="row"><div class="grow"><h1>Viajes</h1></div><button class="btn" data-crono>Cargar cronograma</button><button class="btn pri" data-nvis>+ Viaje</button></div>
   <p class="sub">A dónde hay que ir y qué llevar, retirar o hacer en cada lugar.</p>
   ${P.length ? agrupar(P, v=>v.fecha).map(([f,V])=>V.map(tarjetaViaje).join('')).join('') : `<div class="card flat empty">No hay viajes cargados.<br><span class="small">Cargá los recorridos de Lucho con "+ Viaje".</span></div>`}
   ${hechos.length?`<details class="card flat"><summary class="click"><b>Viajes hechos</b> <span class="muted">· últimos ${hechos.length}</span></summary><div class="list" style="margin-top:8px">${hechos.map(v=>`<div><div class="grow"><b>${esc(v.cliente)}</b> <span class="small muted">${fmtA(v.fecha)} · ${esc(v.tecnico||'')}</span><div class="small muted">${esc(v.resumen||v.tareas||'')}</div></div><button class="btn sm" data-evis="${esc(v.id)}">Ver</button></div>`).join('')}</div></details>`:''}`;
@@ -477,23 +477,30 @@ function vPedidos(){
   <div class="card flat"><div class="row"><div class="grow"><b>Link para los clientes</b><div class="small muted mono" style="word-break:break-all">${PUBLIC_FORM}</div></div>
     <button class="btn sm pri" data-copiar="${PUBLIC_FORM}">Copiar</button><a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('Hola! Para pedir un servicio a Mitash completá este formulario: '+PUBLIC_FORM)}">WhatsApp</a></div></div>
   <div class="seg" id="segped"><button data-v="abiertos" class="${ab?'on':''}">Para resolver · ${S.sol.filter(solAbierta).length}</button><button data-v="todos" class="${ab?'':'on'}">Todos</button></div>
-  ${L.length ? L.map(tarjetaPedido).join('') : '<div class="card flat empty">No hay pedidos para resolver.</div>'}`;
+  ${!L.length ? '<div class="card flat empty">No hay pedidos para resolver.</div>'
+    : !ab ? L.map(tarjetaPedido).join('')
+    : MODOS.map(([k,tit,sub])=>{ const X = L.filter(s=>modo(s)===k); return X.length ? `<div class="sec-t">${tit} <span class="n">· ${X.length}</span></div><p class="small muted" style="margin:-6px 0 10px">${sub}</p>${X.map(tarjetaPedido).join('')}` : ''; }).join('')}`;
 }
+// cómo llegan los equipos (lo elige el cliente en el formulario)
+const MODOS = [['retirar','Para retirar','Hay que ir a buscarlos: agendalos en un viaje.'],
+  ['traen','Los traen ellos','Cuando lleguen, tocá "Ingresó al taller".'],
+  ['lugar','Trabajo en el lugar','Hay que ir a hacer el trabajo allá: agendá la visita.']];
+const modo = s => /llevamos|traen/i.test(s.modalidad||'') ? 'traen' : /lugar/i.test(s.modalidad||'') ? 'lugar' : 'retirar';
 function tarjetaPedido(s){
   const items = itemsSol(s), cli = clienteSol(s), v = viajeDeSol(s) || viajePara(cli);
   const porCat = agrupar(items, i=>CAT(i.tipo));
   return `<div class="card"><div class="row"><div class="grow"><div class="cli">${esc(s.cliente)}${s.sede?` <span class="muted" style="font-weight:500">· ${esc(s.sede)}</span>`:''}</div>
       <div class="small muted">${fmtA(String(s.creada).slice(0,10))} · ${esc([s.contacto,s.telefono,s.email].filter(Boolean).join(' · ')||'sin contacto')}</div></div>
       <span class="tag ${s.estado==='nueva'?'bad':s.estado==='hecha'?'ok':'acc'}">${solIngresada(s)?'en el taller':esc(s.estado)}</span></div>
-    <div style="margin:10px 0 4px">${porCat.map(([c,X])=>tagCat(c,X.length)).join(' ')} <span class="small muted">${esc(s.pedido||'')}</span></div>
+    <div style="margin:10px 0 4px">${porCat.map(([c,X])=>tagCat(c,X.length)).join(' ')} <span class="small muted">${esc(s.pedido||'')}</span>${s.modalidad?` <span class="tag acc">${esc(s.modalidad)}</span>`:''}</div>
     ${items.length?`<details class="more"><summary>Ver equipos</summary><div class="items">${items.map(i=>`<span class="it" style="padding-right:9px"><span class="mono">${esc(i.id||('SN '+(i.serie||'?')))}</span><span class="small muted">${esc(i.servicio||'')}</span></span>`).join('')}</div></details>`:''}
     ${s.direccion?`<div class="small" style="margin-top:6px"><a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.direccion)}">${esc(s.direccion)}</a></div>`:''}
     ${s.detalle?`<div class="small muted" style="margin-top:6px">“${esc(s.detalle)}”</div>`:''}
     ${cli!==s.cliente?`<div class="small muted" style="margin-top:6px">Es el cliente <b>${esc(cli)}</b> de la base.</div>`:''}
-    ${v?`<div style="margin-top:8px"><span class="tag acc">se retira ${cuando(v.fecha)}</span></div>`:''}
+    ${v?`<div style="margin-top:8px"><span class="tag acc">${modo(s)==='lugar'?'visita':'se retira'} ${cuando(v.fecha)}${v.tecnico?' · '+esc(v.tecnico):''}</span></div>`:''}
     <div class="row" style="margin-top:12px">
       ${solAbierta(s)&&items.length?`<button class="btn sm pri" data-ingsol="${s.id}">Ingresó al taller</button>`:''}
-      ${solAbierta(s)&&!v?`<button class="btn sm" data-retsol="${s.id}">Retirar en viaje</button>`:''}
+      ${solAbierta(s)&&!v&&modo(s)!=='traen'?`<button class="btn sm" data-retsol="${s.id}">${modo(s)==='lugar'?'Agendar visita':'Retirar en viaje'}</button>`:''}
       ${s.telefono?`<a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/${esc(String(s.telefono).replace(/\D/g,''))}">WhatsApp</a>`:''}
       ${solAbierta(s)?`<button class="btn sm ghost" data-descsol="${s.id}">Descartar</button>`:''}</div></div>`;
 }
@@ -565,6 +572,43 @@ function formViaje(id, pre){
     if(await visSet(nid, x)){ cerrar(); toast('Viaje guardado'); render(); } };
   if(id) $('#borvis').onclick = async () => { if(confirm('¿Borrar este viaje?')){ await visDel(id); cerrar(); render(); } };
 }
+// Cronograma: un renglón por viaje. "Lunes - Maipú Pilar - preventivo" se repite todas las semanas;
+// "14/10 - ANMAT - centrífugas" es una sola vez. Se puede elegir quién va para todo el cronograma.
+const DIAS_N = {domingo:0,lunes:1,martes:2,miercoles:3,jueves:4,viernes:5,sabado:6};
+function leerCronograma(txt){
+  return txt.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
+    const p = l.split(/\s*[-–|;]\s*|\s*:\s+/).filter(Boolean); const q = norm(p[0]||'');
+    let fecha=null, repetir='', err='';
+    const md = q.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+    const dia = Object.keys(DIAS_N).find(d=>q.startsWith(d.slice(0,3)));
+    if(md){ const y = md[3] ? (md[3].length===2?'20'+md[3]:md[3]) : HOY.slice(0,4); fecha = `${y}-${md[2].padStart(2,'0')}-${md[1].padStart(2,'0')}`; if(fecha<HOY && !md[3]) fecha = (+y+1)+fecha.slice(4); }
+    else if(dia){ let f=HOY; while(new Date(f+'T12:00').getDay()!==DIAS_N[dia]) f=sumarDias(f,1); fecha=f;
+      repetir = /cada 15|quincen/.test(norm(l)) ? '14' : /mes/.test(norm(l)) ? 'mes' : '7'; }
+    else err = 'No entiendo el día o la fecha';
+    const cli = (p[1]||'').trim(); if(!cli && !err) err = 'Falta el cliente';
+    const base = clientes().find(c=>mismoCli(c,cli.split(' ').slice(0,2).join(' '))) || clientes().find(c=>mismoCli(c,cli.split(' ')[0]));
+    const delCli = base ? new Set(nucleo(base).split(' ')) : new Set();   // "Maipú Pilar" con cliente "Laboratorio Maipú" -> sede "Pilar"
+    const sede = base ? cli.split(/\s+/).filter(w=>!delCli.has(nucleo(w)) && nucleo(w)).join(' ') : '';
+    return {linea:l, fecha, repetir, cliente: base||cli, sede, tareas: p.slice(2).join(' - ').replace(/cada 15 d[ií]as|quincenal|todos los meses|mensual/ig,'').replace(/^[\s\-–|;]+|[\s\-–|;]+$/g,''), err};
+  });
+}
+function formCronograma(){
+  hoja(`<div class="hd"><h2>Cargar cronograma</h2><button class="ibtn" data-cerrar aria-label="Cerrar">×</button></div>
+  <p class="small muted" style="margin-top:0">Un renglón por viaje. Con día de la semana se repite (todas las semanas, o "cada 15 días" / "todos los meses"); con fecha es una sola vez.</p>
+  <form class="f" id="fcro">
+    <label>Quién va<select name="tecnico">${TECNICOS.map(t=>`<option>${t}</option>`).join('')}</select></label>
+    <label>Cronograma<textarea name="txt" rows="7" placeholder="Lunes - Maipú Pilar - preventivo&#10;Miércoles - Rossi Loria - centrífugas - cada 15 días&#10;14/10 - ANMAT - retirar micropipetas"></textarea></label>
+    <div id="cprev" class="small"></div>
+    <div class="row"><button type="button" class="btn" id="cver">Revisar</button><button class="btn pri" style="flex:1;justify-content:center">Guardar viajes</button></div></form>`);
+  const fm = $('#fcro');
+  const ver = () => { const L = leerCronograma(fm.txt.value);
+    $('#cprev').innerHTML = L.length ? `<div class="list">${L.map(x=>`<div><div class="grow">${x.err?`<span class="tag bad">${esc(x.err)}</span> ${esc(x.linea)}`:`<b>${esc(x.cliente)}</b>${x.sede?' · '+esc(x.sede):''} <span class="muted">· ${cuando(x.fecha)}${x.repetir?' · '+REPETIR[x.repetir].toLowerCase():''}${x.tareas?' · '+esc(x.tareas):''}</span>`}</div></div>`).join('')}</div>` : ''; return L; };
+  $('#cver').onclick = ver;
+  fm.onsubmit = async e => { e.preventDefault(); const L = ver(); if(!L.length) return; if(L.some(x=>x.err)){ toast('Hay renglones para corregir'); return; }
+    for(const [i,x] of L.entries()) await visSet('v'+Date.now()+'-'+i, {cliente:x.cliente, sede:x.sede, fecha:x.fecha, repetir:x.repetir, tareas:x.tareas, tecnico:fm.tecnico.value});
+    cerrar(); toast(`${plural(L.length,'viaje')} guardados`); render(); };
+}
+
 async function viajeHecho(id){
   const [base, fRep] = id.split('@'); const v = {...S.vis[base], id, fecha:fRep||S.vis[base].fecha}; const lle = llevarA(v), ret = retirarDe(v);
   const partes = [];
@@ -622,6 +666,7 @@ function bind(){
   $$('[data-acc]').forEach(el=>el.onclick = e => { e.stopPropagation(); accionTaller(el.dataset.ids.split(','), el.dataset.acc); });
   $$('[data-ning]').forEach(el=>el.onclick = formIngreso);
   $$('[data-nvis]').forEach(el=>el.onclick = () => formViaje(null));
+  $$('[data-crono]').forEach(el=>el.onclick = formCronograma);
   $$('[data-nvis-cli]').forEach(el=>el.onclick = () => formViaje(null, {cliente:el.dataset.nvisCli, sede:el.dataset.nvisSede||''}));
   $$('[data-evis]').forEach(el=>el.onclick = () => formViaje(el.dataset.evis));
   $$('[data-hvis]').forEach(el=>el.onclick = () => viajeHecho(el.dataset.hvis));
@@ -633,7 +678,7 @@ function bind(){
   $$('[data-econ]').forEach(el=>el.onclick = () => formContacto(el.dataset.econ));
   $$('[data-ingsol]').forEach(el=>el.onclick = async () => { if(await ingresarSolicitud(+el.dataset.ingsol)){ toast('Pasó al taller'); render(); } });
   $$('[data-retsol]').forEach(el=>el.onclick = () => { const s=S.sol.find(x=>x.id===+el.dataset.retsol);
-    formViaje(null, {cliente:clienteSol(s), sede:s.sede||'', tareas:'Retirar equipos del pedido', solicitud:s.id}); });
+    formViaje(null, {cliente:clienteSol(s), sede:s.sede||'', tareas:modo(s)==='lugar'?('Trabajo en el lugar: '+(s.pedido||'')):'Retirar equipos del pedido', solicitud:s.id}); });
   $$('[data-descsol]').forEach(el=>el.onclick = async () => { if(confirm('¿Descartar este pedido?')){ await solUpdate(+el.dataset.descsol,{estado:'descartada'}); render(); } });
   $$('[data-copiar]').forEach(el=>el.onclick = async () => { try{ await navigator.clipboard.writeText(el.dataset.copiar); toast('Link copiado'); }catch(e){ prompt('Copiá el link:', el.dataset.copiar); } });
 }
