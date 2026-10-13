@@ -147,7 +147,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.11';
+const VERSION = 'v7.12';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -380,11 +380,20 @@ const chipItem = (c, est) => t => `<span class="it ${t.estado!=='hacer'?'listo':
 async function accionTaller(ids, acc){
   const L = taller().filter(t=>ids.includes(t.tid)); if(!L.length) return;
   if(acc==='entregado' && L.length>1 && !confirm(`¿Se entregaron los ${L.length} equipos de ${L[0].cliente}?`)) return;
+  // reparaciones: qué se le hizo (queda en el historial del equipo como trabajo realizado)
+  let trabajo = null;
+  if(acc==='entregado' && L.some(t=>t.cat==='R')){ trabajo = prompt('¿Qué se le hizo? (queda en el historial del equipo)', L.find(t=>t.cat==='R').detalle||''); if(trabajo===null) return; }
   const ok = acc==='retirado' ? await tallerUpdate(ids,{retirar:null, fecha:HOY})
     : acc==='listo' ? await tallerUpdate(ids,{listo:HOY})
-    : acc==='entregado' ? (await Promise.all(L.map(t=>tallerUpdate([t.tid],{entregado:HOY, cerrado:true, informe:t.inf||null})))).every(Boolean)
+    : acc==='entregado' ? (await Promise.all(L.map(t=>tallerUpdate([t.tid],{entregado:HOY, cerrado:true, informe:t.inf||null, trabajo:t.cat==='R'?trabajo:null})))).every(Boolean)
     : await tallerUpdate(ids,{entregado:null, cerrado:false});
-  if(ok){ toast(acc==='listo'?'Marcado como listo':acc==='entregado'?'Marcado como entregado':'Listo, vuelve a "Listos"'); render(); }
+  if(ok && acc==='entregado') for(const t of L.filter(t=>t.cat==='R')){
+    const idEq = t.nombre||'(sin ID)', prev = Object.entries(S.equipos_cli).find(([,y])=>mismoCli(y.cliente,t.cliente) && limpioId(y.id_equipo)===limpioId(idEq));
+    const id = prev ? prev[0] : 'e'+Date.now()+Math.floor(Math.random()*1000), y = prev ? prev[1] : {}, tr = (trabajo||t.detalle||'reparación').trim();
+    await docSet('equipos_cli', id, sinVacios({...y, cliente:t.cliente, sede:t.sede||y.sede, tipo:t.tipo, id_equipo:idEq, frecuencia:y.frecuencia||0, ultima:HOY, ultimo_trabajo:tr, clase:'Correctivo',
+      historial:[...(y.historial||[]), {fecha:HOY, trabajo:tr, clase:'Correctivo', por:S.email||''}]}));
+  }
+  if(ok){ if(acc==='entregado') sumarEquiposCli(); toast(acc==='listo'?'Marcado como listo':acc==='entregado'?'Marcado como entregado':acc==='retirado'?'Pasó al taller':'Listo, vuelve a "Listos"'); render(); }
 }
 
 function vRecorridos(){
