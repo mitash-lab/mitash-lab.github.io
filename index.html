@@ -147,7 +147,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.9';
+const VERSION = 'v7.10';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -179,7 +179,7 @@ const PERFILES = { 'de_antoni@hotmail.com':'Claudio' };   // email -> nombre (su
 const PUBLIC_FORM = 'https://mitash-lab.github.io/solicitud.html';
 const linkForm = (cliente, sede) => PUBLIC_FORM + (cliente ? '?' + new URLSearchParams(Object.entries({cliente, sede}).filter(([,v]) => v)).toString() : '');
 
-const S = { view:(location.hash||'#taller').slice(1), equipos:[], servicios:[], tallerDb:[], sol:[], vis:{}, contactos:{}, internos:{}, equipos_cli:{}, r:0,
+const S = { view:(location.hash||'#taller').slice(1), equipos:[], servicios:[], tallerDb:[], sol:[], vis:{}, contactos:{}, internos:{}, equipos_cli:{}, compras:{}, r:0,
   f:{ tal:'hacer', cat:'', ven:MES, ped:'abiertos' } };
 
 // ---------------------------------------------------------------- datos (Supabase)
@@ -233,7 +233,7 @@ async function cargarTodo(){
                            : await Promise.all([cargarTabla('informes'), cargarTabla('termometros')]);
   armarBase(inf, ter);
   if(LOCAL){ demo(); S.solOk=true; sumarEquiposCli(); return; }
-  await Promise.all([cargarTaller(),cargarSol(),cargarVis(),cargarCol('contactos'),cargarCol('internos'),cargarCol('equipos_cli')]);
+  await Promise.all([cargarTaller(),cargarSol(),cargarVis(),cargarCol('contactos'),cargarCol('internos'),cargarCol('equipos_cli'),cargarCol('compras')]);
   sumarEquiposCli();
 }
 // Colecciones simples en "docs": contactos de clientes y equipos internos de Mitash (patrones, termómetros de referencia...)
@@ -318,7 +318,7 @@ function render(){
   const nPed = S.sol.filter(s=>s.estado==='nueva').length;
   const vista = S.view.split('/')[0]==='inicio' ? 'taller' : S.view.split('/')[0];
   $('#tabs').innerHTML = TABS.filter(([v])=>v!=='pedidos' || S.solOk).map(([v,i,t])=>`<a href="#${v}" class="${vista===v?'on':''}"><span class="i">${i}</span>${t}${v==='pedidos'&&nPed?`<span class="dot">${nPed}</span>`:''}</a>`).join('');
-  const V = {taller:vTaller, recorridos:vRecorridos, contactos:vContactos, cliente:vCliente, internos:vInternosPag, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
+  const V = {taller:vTaller, recorridos:vRecorridos, contactos:vContactos, compras:vCompras, cliente:vCliente, internos:vInternosPag, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
   $('#main').innerHTML = V(); bind();
 }
 window.addEventListener('hashchange', () => { S.view = location.hash.slice(1)||'inicio'; render(); window.scrollTo(0,0); });
@@ -460,6 +460,17 @@ function vCliente(){
       <div class="small muted">Último: ${ultimoTrabajo(e)}</div></div>
       ${e.activo?`<span class="tag ${e.proxima<HOY?'bad':e.proxima.slice(0,7)===MES?'warn':'ok'}">próx. ${fmtA(e.proxima)}</span>`:'<span class="tag">no se repite</span>'}</div>`).join('')}</div></div>`).join('')
     || '<div class="card flat empty">No hay equipos cargados de este cliente.</div>'}`;
+}
+// Lista de compras (también la carga el bot cuando alguien avisa en el grupo que falta algo)
+function vCompras(){
+  const L = Object.entries(S.compras).map(([id,x])=>({id,...x})), pend = L.filter(x=>!x.comprado).sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha)));
+  const hechas = L.filter(x=>x.comprado).sort((a,b)=>String(b.comprado).localeCompare(String(a.comprado))).slice(0,15);
+  return `<h1>Lista de compras</h1><p class="sub">Repuestos e insumos que faltan. También se cargan desde el grupo de WhatsApp ("falta comprar…").</p>
+  <form class="f card" id="fcomp" style="grid-template-columns:1fr"><div class="two"><input name="que" placeholder="Qué hay que comprar" required><input name="para" placeholder="Para qué (opcional)"></div>
+    <button class="btn pri" style="justify-content:center">Agregar</button></form>
+  ${pend.length ? `<div class="card"><div class="list">${pend.map(x=>`<div><div class="grow"><b>${esc((x.cantidad?x.cantidad+' ':'')+x.que)}</b><div class="small muted">${x.para?'para '+esc(x.para)+' · ':''}${esc(x.pidio||'')} ${fmtA(x.fecha)}</div></div>
+    <button class="btn sm" data-comprado="${esc(x.id)}">✓ Comprado</button></div>`).join('')}</div></div>` : '<div class="card flat empty">No falta comprar nada.</div>'}
+  ${hechas.length?`<details class="card flat"><summary class="click"><b>Ya comprado</b></summary><div class="list" style="margin-top:8px">${hechas.map(x=>`<div><div class="grow">${esc(x.que)} <span class="small muted">${fmtA(x.comprado)}</span></div></div>`).join('')}</div></details>`:''}`;
 }
 function vInternosPag(){ return `<h1>Equipos internos</h1><p class="sub">Patrones y equipos propios de Mitash, con su próxima calibración.</p>${vInternos()}`; }
 
@@ -707,6 +718,7 @@ function menu(){
     <button id="mtrab">Agregar equipo o trabajo hecho en el lugar</button>
         <a href="#contactos" data-cerrar>Contactos de clientes</a>
     <a href="#internos" data-cerrar>Equipos internos (patrones)</a>
+    <a href="#compras" data-cerrar>Lista de compras</a>
     <a href="#revisar" data-cerrar>Datos a revisar</a>
     <a href="v5.html">Versión anterior (pagos y termómetros Mitash)</a>
     <a href="${PUBLIC_FORM}" target="_blank" rel="noopener">Ver el formulario de pedidos</a>
@@ -726,6 +738,9 @@ function bind(){
   $$('[data-acc]').forEach(el=>el.onclick = e => { e.stopPropagation(); accionTaller(el.dataset.ids.split(','), el.dataset.acc); });
   $$('[data-ning]').forEach(el=>el.onclick = formIngreso);
   $$('[data-nvis]').forEach(el=>el.onclick = () => formViaje(null));
+  $$('[data-comprado]').forEach(el=>el.onclick = async () => { const id=el.dataset.comprado; if(await docSet('compras', id, {...S.compras[id], comprado:HOY})){ toast('Marcado como comprado'); render(); } });
+  { const fc=$('#fcomp'); if(fc) fc.onsubmit = async e => { e.preventDefault(); const d=Object.fromEntries(new FormData(fc).entries());
+    if(await docSet('compras', 'c'+Date.now(), sinVacios({que:d.que.trim(), para:d.para.trim(), fecha:HOY, pidio:S.email||''}))){ toast('Agregado'); render(); } }; }
   $$('[data-cli]').forEach(el=>el.onclick = () => { location.hash = 'cliente/'+encodeURIComponent(el.dataset.cli); });
   $$('[data-ntrab]').forEach(el=>el.onclick = () => formTrabajo());
   $$('[data-crono]').forEach(el=>el.onclick = formCronograma);
