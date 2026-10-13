@@ -147,7 +147,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.10';
+const VERSION = 'v7.11';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -189,7 +189,7 @@ const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && location.s
 const conTiempo = (p,ms) => Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(new Error('tiempo')),ms))]);
 
 async function cargarTabla(t){ const out=[]; for(let i=0;;i+=1000){ const {data,error}=await sb.from(t).select('data').range(i,i+999); if(error) throw error; out.push(...data.map(d=>d.data)); if(data.length<1000) break; } return out; }
-const deTaller = t => ({tid:String(t.id), ref:t.ref||null, fecha:t.fecha, tipo:t.tipo||'', cliente:t.cliente, sede:t.sede||'', id_equipo:t.id_equipo||'', serie:t.serie||'',
+const deTaller = t => ({retirar:!!t.retirar, tid:String(t.id), ref:t.ref||null, fecha:t.fecha, tipo:t.tipo||'', cliente:t.cliente, sede:t.sede||'', id_equipo:t.id_equipo||'', serie:t.serie||'',
   equipo:t.equipo||null, pedido:t.pedido||'', detalle:t.detalle||'', solicitud:t.solicitud||null, listo:t.listo||null, entregado:t.entregado||null, informe:t.informe||null, cerrado:!!t.cerrado});
 // El taller se guarda en la tabla "docs" (colección "taller"): no necesita tablas nuevas. Lo mismo podrá escribir el bot.
 async function cargarTaller(){ if(LOCAL) return;
@@ -271,13 +271,13 @@ function taller(){ return memo('tal', () => {
   const libres = (t, extra) => S.servicios.filter(s => s.tipo===CATN[t.cat][1] && s.fecha>=t.fecha && !usados.has(s.tipo+'|'+s.informe) && extra(s))
     .sort((a,b)=>a.fecha.localeCompare(b.fecha)||cmpInf(a.informe,b.informe))[0];
   const asignar = (t,s) => { if(!s) return; usados.add(s.tipo+'|'+s.informe); t.auto = {informe:s.informe, fecha:s.fecha, id:s.id_equipo||s.serie||''}; };
-  const pend = L.filter(t=>t.cat!=='R' && !t.informe && !t.entregado).sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.tid.localeCompare(b.tid));
+  const pend = L.filter(t=>t.cat!=='R' && !t.informe && !t.entregado && !t.retirar).sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.tid.localeCompare(b.tid));
   pend.filter(t=>t.equipo).forEach(t=>asignar(t, libres(t, s=>s.equipo===t.equipo)));
   pend.filter(t=>!t.equipo && !t.auto && t.id_equipo).forEach(t=>{ const i=limpioId(t.id_equipo);
     asignar(t, libres(t, s=>mismoCli(s.cliente,t.cliente) && [s.id_equipo,s.serie].some(x=>x && limpioId(x)===i))); });
   pend.filter(t=>!t.equipo && !t.auto && !t.id_equipo).forEach(t=>asignar(t, libres(t, s=>mismoCli(s.cliente,t.cliente))));
   L.forEach(t=>{ t.inf = t.informe || (t.auto && t.auto.informe) || null; t.nombre = t.id_equipo || (t.auto && t.auto.id) || '';
-    t.estado = t.entregado ? 'entregado' : (t.listo || t.inf) ? 'listo' : 'hacer'; });
+    t.estado = t.entregado ? 'entregado' : t.retirar ? 'retirar' : (t.listo || t.inf) ? 'listo' : 'hacer'; });
   return L; }); }
 const listos = () => taller().filter(t=>t.estado==='listo');
 const porHacer = () => taller().filter(t=>t.estado==='hacer');
@@ -296,6 +296,7 @@ function repeticiones(v){ const out=[], hasta=sumarDias(HOY,60), desde=sumarDias
   return out; }
 const proximas = () => memo('prox', () => visitas().flatMap(v=>v.repetir ? repeticiones(v) : (!v.hecho && v.fecha>=sumarDias(HOY,-7) ? [v] : [])).sort((a,b)=>a.fecha.localeCompare(b.fecha)||String(a.hora||'').localeCompare(String(b.hora||''))));
 const llevarA = v => listos().filter(t=>mismoCli(t.cliente,v.cliente));
+const aRetirarDe = v => taller().filter(t=>t.estado==='retirar' && mismoCli(t.cliente,v.cliente));
 const retirarDe = v => S.sol.filter(s=>solAbierta(s) && (v.solicitud===s.id || mismoCli(clienteSol(s),v.cliente)));
 const viajeDeSol = s => proximas().find(v=>v.solicitud===s.id);
 const vencenEn = (cli, hasta) => S.equipos.filter(e=>e.activo && e.proxima && e.cliente!=='MITASH' && e.proxima.slice(0,7)<=hasta && e.proxima>=sumarDias(HOY,-240) && mismoCli(e.cliente,cli));
@@ -337,7 +338,8 @@ function tarjetaViaje(v){
     <div class="todo">
       ${v.tareas?`<div><div><b>Trabajo</b>${esc(v.tareas)}</div></div>`:''}
       ${lle.length?`<div><div><b>Llevar · listos para entregar</b>${resumenCat(lle)}<div class="small muted mono" style="margin-top:4px">${lle.map(t=>esc(t.nombre||t.inf||'')).filter(Boolean).slice(0,14).join(' · ')}</div></div></div>`:''}
-      ${ret.length?`<div><div><b>Retirar · ${plural(nRet,'equipo')}</b><span class="small">${ret.map(s=>esc(itemsSol(s).map(i=>i.tipo).filter(Boolean).join(', ')||s.pedido||'pedido')).join(' · ')}</span></div></div>`:''}
+      ${aRetirarDe(v).length?`<div><div><b>Retirar · ${plural(aRetirarDe(v).length,'equipo')}</b><span class="small">${aRetirarDe(v).map(t=>esc((t.nombre||t.tipo)+(t.detalle?' ('+t.detalle+')':''))).join(' · ')}</span></div></div>`:''}
+      ${ret.length?`<div><div><b>Pedidos para retirar · ${plural(nRet,'equipo')}</b><span class="small">${ret.map(s=>esc(itemsSol(s).map(i=>i.tipo).filter(Boolean).join(', ')||s.pedido||'pedido')).join(' · ')}</span></div></div>`:''}
       ${ven.length?`<div><div><b>Vencen ${ven.some(atrasado)?'o están atrasados':'este mes'}</b><span class="small">${resumenCat(ven.map(e=>({cat:CAT(e.tipo)})))} · aprovechar el viaje</span></div></div>`:''}
       ${!v.tareas && !lle.length && !ret.length && !ven.length?'<div><div class="small muted">Nada pendiente para este cliente.</div></div>':''}
     </div>
@@ -351,19 +353,20 @@ function vTaller(){
   const grupos = agrupar(L, t=>t.cliente).sort((a,b)=>b[1].length-a[1].length);
   // los 3 números son también los botones para cambiar de lista
   return `<div class="row"><div class="grow"><h1>Taller</h1></div><button class="btn pri" data-ning>+ Ingreso</button></div>
-  <div class="stats" id="segtal" style="grid-template-columns:repeat(3,1fr);margin:12px 0 16px">${[['hacer','Para calibrar','acc'],['listo','Para entregar','ok'],['entregado','Entregados','']].map(([k,t,c])=>
+  <div class="stats" id="segtal" style="grid-template-columns:repeat(4,1fr);margin:12px 0 16px">${[['retirar','Para retirar','warn'],['hacer','Para calibrar','acc'],['listo','Para entregar','ok'],['entregado','Entregados','']].map(([k,t,c])=>
     `<button class="stat ${c}" data-v="${k}" style="text-align:left;font:inherit;${f.tal===k?'outline:2px solid var(--acc);':'opacity:.75;'}"><div class="k">${t}</div><div class="v">${n(k)}</div></button>`).join('')}</div>
   ${grupos.length ? grupos.map(([c,X])=>{ const v = f.tal==='listo' && viajePara(c);
       return `<div class="card"><div class="row"><div class="grow cli">${esc(c)}</div>${f.tal!=='listo' ? '' : v ? `<span class="tag acc">Viaje ${cuando(v.fecha).toLowerCase()} · ${esc(v.tecnico||'Lucho')}</span>` : `<button class="btn sm" data-nvis-cli="${esc(c)}">Agendar entrega</button>`}</div>${lotes(X).map(lote).join('')}</div>`; }).join('')
-    : `<div class="card flat empty">${f.tal==='hacer'?'No hay nada para calibrar.':f.tal==='listo'?'No hay nada listo para entregar.':'Sin entregas en los últimos 2 meses.'}</div>`}`;
+    : `<div class="card flat empty">${f.tal==='retirar'?'No hay nada para retirar.':f.tal==='hacer'?'No hay nada para calibrar.':f.tal==='listo'?'No hay nada listo para entregar.':'Sin entregas en los últimos 2 meses.'}</div>`}`;
 }
 function lote(X){
   const t0 = X[0], c = t0.cat, est = t0.estado;
   const ids = X.map(t=>t.tid).join(',');
-  const desc = c==='R' ? esc(t0.tipo + (t0.detalle?' · '+t0.detalle:'')) : '';
+  const desc = c==='R' ? esc(t0.tipo + (X.length===1 && t0.nombre?' '+t0.nombre:'') + (t0.detalle?' · '+t0.detalle:'')) : '';
   return `<div class="lote"><div class="row"><div class="grow">${tagCat(c, X.length)} <span class="small muted">${t0.sede?esc(t0.sede)+' · ':''}entró ${fmt(t0.fecha)}</span>
       ${desc?`<div class="small" style="margin-top:4px">${desc}</div>`:''}</div>
-    ${est==='hacer'?`<button class="btn sm" data-acc="listo" data-ids="${ids}">✓ ${X.length>1?'Todo listo':'Listo'}</button>`
+    ${est==='retirar'?`<button class="btn sm pri" data-acc="retirado" data-ids="${ids}">Retirado</button>`
+      : est==='hacer'?`<button class="btn sm" data-acc="listo" data-ids="${ids}">✓ ${X.length>1?'Todo listo':'Listo'}</button>`
       : est==='listo'?`<button class="btn sm ok" data-acc="entregado" data-ids="${ids}">${X.length>1?'Entregar todo':'Entregado'}</button>`
       : `<span class="small muted">entregado ${fmt(t0.entregado)}</span><button class="btn sm ghost" data-acc="deshacer" data-ids="${ids}">Deshacer</button>`}</div>
     ${(() => { const sin = X.filter(t=>!t.nombre && !t.inf && c!=='R'); const con = c==='R' && X.length===1 ? [] : X.filter(t=>!sin.includes(t));
@@ -377,7 +380,8 @@ const chipItem = (c, est) => t => `<span class="it ${t.estado!=='hacer'?'listo':
 async function accionTaller(ids, acc){
   const L = taller().filter(t=>ids.includes(t.tid)); if(!L.length) return;
   if(acc==='entregado' && L.length>1 && !confirm(`¿Se entregaron los ${L.length} equipos de ${L[0].cliente}?`)) return;
-  const ok = acc==='listo' ? await tallerUpdate(ids,{listo:HOY})
+  const ok = acc==='retirado' ? await tallerUpdate(ids,{retirar:null, fecha:HOY})
+    : acc==='listo' ? await tallerUpdate(ids,{listo:HOY})
     : acc==='entregado' ? (await Promise.all(L.map(t=>tallerUpdate([t.tid],{entregado:HOY, cerrado:true, informe:t.inf||null})))).every(Boolean)
     : await tallerUpdate(ids,{entregado:null, cerrado:false});
   if(ok){ toast(acc==='listo'?'Marcado como listo':acc==='entregado'?'Marcado como entregado':'Listo, vuelve a "Listos"'); render(); }
@@ -577,6 +581,7 @@ function formIngreso(){
     <label id="lequipo" hidden>Qué equipo<input name="equipo" placeholder="Ej.: centrífuga Rolco, estufa"></label>
     <label>IDs <span style="font-weight:500">(opcional, uno por renglón. Si no los ponés, se completan solos con los informes)</span><textarea name="ids" rows="3"></textarea></label>
     <label>Detalle (opcional)<input name="detalle" placeholder="Ej.: no enciende · los trajo Lucho"></label>
+    <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" name="retirar" style="width:auto"> Todavía hay que ir a retirarlo</label>
     <label>Fecha de ingreso<input name="fecha" type="date" value="${HOY}"></label>
     <div class="err" id="ierr"></div><button class="btn pri" style="justify-content:center">Guardar ingreso</button></form>`);
   const fm = $('#fing');
@@ -588,7 +593,7 @@ function formIngreso(){
     const tipo = d.cat==='R' ? d.equipo.trim() : CATN[d.cat][1];
     const filas = Array.from({length:n}, (_,i)=>{ const id = ids[i]||null;
       const e = id && S.equipos.find(e=>mismoCli(e.cliente,cli) && CAT(e.tipo)===d.cat && [e.id_equipo,e.serie].some(x=>x && limpioId(x)===limpioId(id)));
-      return {fecha:d.fecha||HOY, cliente:cli, sede:d.sede.trim()||null, tipo, id_equipo:id, equipo:e?e.clave:null, pedido:d.cat==='R'?'Reparación':'Calibración', detalle:d.detalle.trim()||null}; });
+      return {fecha:d.fecha||HOY, cliente:cli, sede:d.sede.trim()||null, tipo, id_equipo:id, equipo:e?e.clave:null, pedido:d.cat==='R'?'Reparación':'Calibración', detalle:d.detalle.trim()||null, retirar:d.retirar?true:null}; });
     if(await tallerInsert(filas)){ cerrar(); S.f.tal='hacer'; S.f.cat=''; toast('Ingreso guardado'); location.hash==='#taller' ? render() : (location.hash='taller'); } };
 }
 
@@ -654,6 +659,9 @@ async function viajeHecho(id){
   const partes = [];
   if(lle.length && confirm(`¿Entregaste los ${plural(lle.length,'equipo')} listos de ${v.cliente}?`)){
     await Promise.all(lle.map(t=>tallerUpdate([t.tid],{entregado:HOY, cerrado:true, informe:t.inf||null}))); partes.push(`entregó ${lle.length}`); }
+  const ret2 = aRetirarDe(v);
+  if(ret2.length && confirm(`¿Retiraste ${plural(ret2.length,'equipo')} de ${v.cliente}? (pasan al taller)`)){
+    await tallerUpdate(ret2.map(t=>t.tid), {retirar:null, fecha:HOY}); partes.push(`retiró ${ret2.length}`); }
   for(const s of ret){ if(itemsSol(s).length && confirm(`¿Retiraste los ${plural(itemsSol(s).length,'equipo')} del pedido de ${s.cliente}? (pasan al taller)`)){ if(await ingresarSolicitud(s.id,true)) partes.push(`retiró ${itemsSol(s).length}`); } }
   const resumen = [v.tareas, ...partes].filter(Boolean).join(' · ');
   await visSet(base, fRep ? {...S.vis[base], hechas:[...(S.vis[base].hechas||[]), fRep], ultimo:{fecha:fRep, resumen}} : {...S.vis[base], hecho:true, resumen});
