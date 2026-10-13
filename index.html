@@ -147,7 +147,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.13';
+const VERSION = 'v7.14';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -385,14 +385,18 @@ function formEditarLote(tids){
     <label>Equipo<input name="tipo" value="${esc(t0.tipo)}"></label>
     <label>IDs <span style="font-weight:500">(uno por renglón, en orden; vacío = sin ID)</span><textarea name="ids" rows="${Math.min(8,X.length+1)}">${X.map(t=>esc(t.id_equipo||'')).join('\n')}</textarea></label>
     <label>Detalle<input name="detalle" value="${esc(t0.detalle||'')}"></label>
-    <div class="row"><button class="btn pri" style="flex:1;justify-content:center">Guardar cambios</button><button type="button" class="btn" id="bored">Borrar ${X.length>1?'los '+X.length:''}</button></div></form>`);
+    <div class="row"><button class="btn pri" style="flex:1;justify-content:center">Guardar cambios</button><button type="button" class="btn" id="bored">Borrar ${X.length>1?'los '+X.length:''}</button></div></form>
+  ${X.length>1?`<h2 style="margin-top:18px">Borrar uno solo</h2><div class="list">${X.map(t=>`<div><div class="grow">${esc(t.tipo)} <b class="mono">${esc(t.nombre||'sin ID')}</b>${t.detalle?` <span class="small muted">${esc(t.detalle)}</span>`:''}</div>
+    <button type="button" class="btn sm" data-boruno="${esc(t.tid)}">Borrar este</button></div>`).join('')}</div>`:''}`);
+  const borrar = async (lista, txt) => { if(!confirm(txt)) return;
+    if(!LOCAL){ const {error} = await sb.from('docs').delete().eq('coleccion','taller').in('id', lista); if(error){ alert('No se pudo borrar: '+error.message); return; } }
+    S.tallerDb = S.tallerDb.filter(t=>!lista.includes(t.tid)); cerrar(); toast('Borrado'); render(); };
+  $$('[data-boruno]').forEach(el=>el.onclick = () => { const t = X.find(x=>x.tid===el.dataset.boruno); borrar([t.tid], `¿Borrar solo ${t.tipo} ${t.nombre||'sin ID'} de ${t.cliente}?`); });
   $('#fed').onsubmit = async e => { e.preventDefault(); const d = Object.fromEntries(new FormData(e.target).entries()); const ids = d.ids.split('\n').map(x=>x.trim());
     let ok = true;
     for(const [i,t] of X.entries()) ok = await tallerUpdate([t.tid], {cliente:d.cliente.trim(), sede:d.sede.trim()||null, fecha:d.fecha||t.fecha, tipo:d.tipo.trim()||t.tipo, id_equipo:ids[i]||null, detalle:d.detalle.trim()||null}) && ok;
     if(ok){ cerrar(); toast('Guardado'); render(); } };
-  $('#bored').onclick = async () => { if(!confirm(`¿Borrar ${X.length>1?'estos '+X.length+' equipos':'este equipo'} de ${t0.cliente}? No se puede deshacer.`)) return;
-    if(!LOCAL){ const {error} = await sb.from('docs').delete().eq('coleccion','taller').in('id', X.map(t=>t.tid)); if(error){ alert('No se pudo borrar: '+error.message); return; } }
-    S.tallerDb = S.tallerDb.filter(t=>!tids.includes(t.tid)); cerrar(); toast('Borrado'); render(); };
+  $('#bored').onclick = () => borrar(X.map(t=>t.tid), `¿Borrar ${X.length>1?'estos '+X.length+' equipos':'este equipo'} de ${t0.cliente}? No se puede deshacer.`);
 }
 // cada equipo es solo texto (ID e informe); el botón va uno por grupo
 const chipItem = (c, est) => t => `<span class="it ${t.estado!=='hacer'?'listo':''}" style="padding-right:9px" title="${t.inf?'Informe '+esc(t.inf):''}">
