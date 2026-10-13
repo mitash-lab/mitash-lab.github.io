@@ -147,7 +147,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.8';
+const VERSION = 'v7.9';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -302,8 +302,10 @@ const vencenEn = (cli, hasta) => S.equipos.filter(e=>e.activo && e.proxima && e.
 const viajePara = cli => proximas().find(v=>mismoCli(v.cliente,cli) && v.fecha>=HOY && v.fecha<=sumarDias(HOY,45));
 
 // Vencimientos: equipos activos según la última calibración (Maipú termómetros 6 meses, el resto 1 año)
-const vencimientos = () => memo('ven', () => S.equipos.filter(e=>e.activo && e.proxima && e.cliente && e.cliente!=='MITASH'));
-const atrasado = e => e.proxima.slice(0,7) < MES && e.proxima >= sumarDias(HOY,-240);
+// Lo vencido antes del CORTE se descartó (13/10/2026: muchos ya no aplican). Desde ahí, lo que vence y no se hace sí queda como atrasado.
+const CORTE = '2026-10-01';
+const vencimientos = () => memo('ven', () => S.equipos.filter(e=>e.activo && e.proxima && e.proxima>=CORTE && e.cliente && e.cliente!=='MITASH'));
+const atrasado = e => e.proxima.slice(0,7) < MES && e.proxima >= CORTE;
 const enTaller = e => taller().some(t=>t.estado!=='entregado' && (t.equipo===e.clave || (t.nombre && limpioId(t.nombre)===limpioId(e.id_equipo||e.serie))));
 
 function yo(){ return PERFILES[(S.email||'').toLowerCase()] || ''; }
@@ -316,7 +318,7 @@ function render(){
   const nPed = S.sol.filter(s=>s.estado==='nueva').length;
   const vista = S.view.split('/')[0]==='inicio' ? 'taller' : S.view.split('/')[0];
   $('#tabs').innerHTML = TABS.filter(([v])=>v!=='pedidos' || S.solOk).map(([v,i,t])=>`<a href="#${v}" class="${vista===v?'on':''}"><span class="i">${i}</span>${t}${v==='pedidos'&&nPed?`<span class="dot">${nPed}</span>`:''}</a>`).join('');
-  const V = {taller:vTaller, recorridos:vRecorridos, contactos:vContactos, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
+  const V = {taller:vTaller, recorridos:vRecorridos, contactos:vContactos, cliente:vCliente, internos:vInternosPag, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
   $('#main').innerHTML = V(); bind();
 }
 window.addEventListener('hashchange', () => { S.view = location.hash.slice(1)||'inicio'; render(); window.scrollTo(0,0); });
@@ -445,6 +447,22 @@ function formContacto(id){
   if(id) $('#borcon').onclick = async () => { if(confirm('¿Borrar este contacto?')){ await docDel('contactos', id); cerrar(); render(); } };
 }
 
+function vCliente(){
+  const c = decodeURIComponent(S.view.split('/').slice(1).join('/'));
+  const E = S.equipos.filter(e=>mismoCli(e.cliente,c) && (e.activo || e.doc)).sort((a,b)=>String(a.sector||'').localeCompare(String(b.sector||''))||String(a.tipo).localeCompare(String(b.tipo))||String(a.id_equipo).localeCompare(String(b.id_equipo),undefined,{numeric:true}));
+  const T = taller().filter(t=>mismoCli(t.cliente,c) && t.estado!=='entregado');
+  const ultimoTrabajo = e => { const s = S.servicios.filter(x=>x.equipo===e.clave).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
+    return s ? `${fmtA(s.fecha)} · informe ${esc(s.informe)}` : e.doc ? `${fmtA(e.ultima)} · ${esc(e.ultimo_trabajo||'')}` : fmtA(e.ultima); };
+  return `<p><a href="#vencimientos">← Vencimientos</a></p><div class="row"><div class="grow"><h1>${esc(c)}</h1></div><button class="btn sm" data-nvis-cli="${esc(c)}">Agendar viaje</button></div>
+  <p class="sub">${plural(E.length,'equipo')}${T.length?` · ${T.length} en el taller`:''}. Tocá un equipo para ver su historial.</p>
+  ${agrupar(E, e=>e.sector||'').map(([sede,X])=>`<div class="card">${sede?`<div class="cli" style="margin-bottom:6px">${esc(sede)}</div>`:''}<div class="list">${X.map(e=>`
+    <div class="click" data-eq="${esc(e.clave)}"><div class="grow"><span class="small muted">${esc(e.tipo)}</span> <b class="mono">${esc(e.id_equipo)}</b>
+      <div class="small muted">Último: ${ultimoTrabajo(e)}</div></div>
+      ${e.activo?`<span class="tag ${e.proxima<HOY?'bad':e.proxima.slice(0,7)===MES?'warn':'ok'}">próx. ${fmtA(e.proxima)}</span>`:'<span class="tag">no se repite</span>'}</div>`).join('')}</div></div>`).join('')
+    || '<div class="card flat empty">No hay equipos cargados de este cliente.</div>'}`;
+}
+function vInternosPag(){ return `<h1>Equipos internos</h1><p class="sub">Patrones y equipos propios de Mitash, con su próxima calibración.</p>${vInternos()}`; }
+
 function vVencimientos(){
   const meses = [MES, sumarMeses(MES,1), sumarMeses(MES,2)];
   const sel = S.f.ven;
@@ -457,7 +475,7 @@ function vVencimientos(){
   return `<div class="row"><div class="grow"><h1>Vencimientos</h1></div><button class="btn pri" data-ntrab>+ Equipo o trabajo hecho</button></div><p class="sub">Próximas calibraciones y mantenimientos de cada cliente. <a href="#contactos">Contactos de clientes</a></p>
   <div class="chips" id="chven"><button class="chip ${sel==='atr'?'on':''}" data-v="atr">Atrasados · ${nAtr}</button>${meses.map(m=>`<button class="chip ${sel===m?'on':''}" data-v="${m}">${cap(mesTxt(m))} · ${vencimientos().filter(e=>e.proxima.slice(0,7)===m).length}</button>`).join('')}${chipInt}</div>
   ${grupos.length ? grupos.map(([k,X])=>{ const [c,sede]=k.split('\u0000'); const v=viajePara(c); const nt=X.filter(enTaller).length;
-    return `<div class="card"><div class="row"><div class="grow"><div class="cli">${esc(c)}${sede?` <span class="muted" style="font-weight:500">· ${esc(sede)}</span>`:''}</div>
+    return `<div class="card"><div class="row"><div class="grow"><div class="cli click" data-cli="${esc(c)}">${esc(c)} <span class="muted">›</span>${sede?` <span class="muted" style="font-weight:500">· ${esc(sede)}</span>`:''}</div>
       <div style="margin-top:6px">${resumenCat(X.map(e=>({cat:CAT(e.tipo), tipo:e.tipo})))}${nt?` <span class="tag acc">${nt} ya en el taller</span>`:''}${v?` <span class="tag acc">${cuando(v.fecha)}</span>`:''}</div></div></div>
       <details class="more"><summary>Ver equipos</summary><div class="items">${X.sort((a,b)=>String(a.id_equipo).localeCompare(String(b.id_equipo),undefined,{numeric:true})).map(e=>`<span class="it click ${enTaller(e)?'listo':''}" data-eq="${esc(e.clave)}" style="padding-right:9px"><span class="mono">${esc(e.id_equipo||e.serie||'?')}</span><span class="small muted">${fmt(e.proxima)}</span></span>`).join('')}</div></details>
       <div class="row" style="margin-top:10px"><button class="btn sm" data-aviso="${esc(k)}">Avisar al cliente</button>${v?'':`<button class="btn sm" data-nvis-cli="${esc(c)}" data-nvis-sede="${esc(sede)}">Agendar visita</button>`}</div></div>`; }).join('')
@@ -688,6 +706,7 @@ function menu(){
     <button id="mbus">Buscar equipo</button>
     <button id="mtrab">Agregar equipo o trabajo hecho en el lugar</button>
         <a href="#contactos" data-cerrar>Contactos de clientes</a>
+    <a href="#internos" data-cerrar>Equipos internos (patrones)</a>
     <a href="#revisar" data-cerrar>Datos a revisar</a>
     <a href="v5.html">Versión anterior (pagos y termómetros Mitash)</a>
     <a href="${PUBLIC_FORM}" target="_blank" rel="noopener">Ver el formulario de pedidos</a>
@@ -707,6 +726,7 @@ function bind(){
   $$('[data-acc]').forEach(el=>el.onclick = e => { e.stopPropagation(); accionTaller(el.dataset.ids.split(','), el.dataset.acc); });
   $$('[data-ning]').forEach(el=>el.onclick = formIngreso);
   $$('[data-nvis]').forEach(el=>el.onclick = () => formViaje(null));
+  $$('[data-cli]').forEach(el=>el.onclick = () => { location.hash = 'cliente/'+encodeURIComponent(el.dataset.cli); });
   $$('[data-ntrab]').forEach(el=>el.onclick = () => formTrabajo());
   $$('[data-crono]').forEach(el=>el.onclick = formCronograma);
   $$('[data-nvis-cli]').forEach(el=>el.onclick = () => formViaje(null, {cliente:el.dataset.nvisCli, sede:el.dataset.nvisSede||''}));
