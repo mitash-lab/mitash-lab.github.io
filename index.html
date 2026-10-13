@@ -147,7 +147,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.14';
+const VERSION = 'v7.15';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -271,10 +271,10 @@ function taller(){ return memo('tal', () => {
   const libres = (t, extra) => S.servicios.filter(s => s.tipo===CATN[t.cat][1] && s.fecha>=t.fecha && !usados.has(s.tipo+'|'+s.informe) && extra(s))
     .sort((a,b)=>a.fecha.localeCompare(b.fecha)||cmpInf(a.informe,b.informe))[0];
   const asignar = (t,s) => { if(!s) return; usados.add(s.tipo+'|'+s.informe); t.auto = {informe:s.informe, fecha:s.fecha, id:s.id_equipo||s.serie||''}; };
-  const pend = L.filter(t=>t.cat!=='R' && !t.informe && !t.entregado && !t.retirar).sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.tid.localeCompare(b.tid));
+  const pend = L.filter(t=>t.cat!=='R' && !t.informe && !t.entregado && !t.retirar && !t.listo).sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.tid.localeCompare(b.tid));
   pend.filter(t=>t.equipo).forEach(t=>asignar(t, libres(t, s=>s.equipo===t.equipo)));
   pend.filter(t=>!t.equipo && !t.auto && t.id_equipo).forEach(t=>{ const i=limpioId(t.id_equipo);
-    asignar(t, libres(t, s=>mismoCli(s.cliente,t.cliente) && [s.id_equipo,s.serie].some(x=>x && limpioId(x)===i))); });
+    asignar(t, libres(t, s=>mismoCli(s.cliente,t.cliente) && [s.id_equipo,s.serie].some(x=>x && (limpioId(x)===i || (i.length>=4 && limpioId(x).endsWith(i)))))); });
   pend.filter(t=>!t.equipo && !t.auto && !t.id_equipo).forEach(t=>asignar(t, libres(t, s=>mismoCli(s.cliente,t.cliente))));
   L.forEach(t=>{ t.inf = t.informe || (t.auto && t.auto.informe) || null; t.nombre = t.id_equipo || (t.auto && t.auto.id) || '';
     t.estado = t.entregado ? 'entregado' : t.retirar ? 'retirar' : (t.listo || t.inf) ? 'listo' : 'hacer'; });
