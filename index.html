@@ -147,7 +147,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.12';
+const VERSION = 'v7.13';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -372,7 +372,27 @@ function lote(X){
     ${(() => { const sin = X.filter(t=>!t.nombre && !t.inf && c!=='R'); const con = c==='R' && X.length===1 ? [] : X.filter(t=>!sin.includes(t));
       return (con.length?`<div class="items">${con.map(chipItem(c,est)).join('')}</div>`:'') +
         (sin.length>1?`<div class="small muted" style="margin:6px 0 2px">${sin.length===X.length?sin.length+' sin ID':'+ '+sin.length+' sin ID'} (se completan con el informe)</div>`:''); })()}
+    <div style="margin-top:4px"><button class="btn sm ghost" data-edlote="${ids}">Editar o borrar</button></div>
   </div>`;
+}
+// Editar o borrar lo cargado en el taller (cliente, sede, equipo, IDs, detalle, fecha)
+function formEditarLote(tids){
+  const X = taller().filter(t=>tids.includes(t.tid)); if(!X.length) return; const t0 = X[0];
+  hoja(`<div class="hd"><h2>Editar</h2><button class="ibtn" data-cerrar aria-label="Cerrar">×</button></div>
+  <form class="f" id="fed">
+    <label>Cliente<input name="cliente" list="dlcli" required autocomplete="off" value="${esc(t0.cliente)}"></label>${dlClientes()}
+    <div class="two"><label>Sede<input name="sede" value="${esc(t0.sede||'')}"></label><label>Fecha<input name="fecha" type="date" value="${esc(t0.fecha)}"></label></div>
+    <label>Equipo<input name="tipo" value="${esc(t0.tipo)}"></label>
+    <label>IDs <span style="font-weight:500">(uno por renglón, en orden; vacío = sin ID)</span><textarea name="ids" rows="${Math.min(8,X.length+1)}">${X.map(t=>esc(t.id_equipo||'')).join('\n')}</textarea></label>
+    <label>Detalle<input name="detalle" value="${esc(t0.detalle||'')}"></label>
+    <div class="row"><button class="btn pri" style="flex:1;justify-content:center">Guardar cambios</button><button type="button" class="btn" id="bored">Borrar ${X.length>1?'los '+X.length:''}</button></div></form>`);
+  $('#fed').onsubmit = async e => { e.preventDefault(); const d = Object.fromEntries(new FormData(e.target).entries()); const ids = d.ids.split('\n').map(x=>x.trim());
+    let ok = true;
+    for(const [i,t] of X.entries()) ok = await tallerUpdate([t.tid], {cliente:d.cliente.trim(), sede:d.sede.trim()||null, fecha:d.fecha||t.fecha, tipo:d.tipo.trim()||t.tipo, id_equipo:ids[i]||null, detalle:d.detalle.trim()||null}) && ok;
+    if(ok){ cerrar(); toast('Guardado'); render(); } };
+  $('#bored').onclick = async () => { if(!confirm(`¿Borrar ${X.length>1?'estos '+X.length+' equipos':'este equipo'} de ${t0.cliente}? No se puede deshacer.`)) return;
+    if(!LOCAL){ const {error} = await sb.from('docs').delete().eq('coleccion','taller').in('id', X.map(t=>t.tid)); if(error){ alert('No se pudo borrar: '+error.message); return; } }
+    S.tallerDb = S.tallerDb.filter(t=>!tids.includes(t.tid)); cerrar(); toast('Borrado'); render(); };
 }
 // cada equipo es solo texto (ID e informe); el botón va uno por grupo
 const chipItem = (c, est) => t => `<span class="it ${t.estado!=='hacer'?'listo':''}" style="padding-right:9px" title="${t.inf?'Informe '+esc(t.inf):''}">
@@ -755,6 +775,7 @@ function bind(){
   $$('[data-acc]').forEach(el=>el.onclick = e => { e.stopPropagation(); accionTaller(el.dataset.ids.split(','), el.dataset.acc); });
   $$('[data-ning]').forEach(el=>el.onclick = formIngreso);
   $$('[data-nvis]').forEach(el=>el.onclick = () => formViaje(null));
+  $$('[data-edlote]').forEach(el=>el.onclick = () => formEditarLote(el.dataset.edlote.split(',')));
   $$('[data-comprado]').forEach(el=>el.onclick = async () => { const id=el.dataset.comprado; if(await docSet('compras', id, {...S.compras[id], comprado:HOY})){ toast('Marcado como comprado'); render(); } });
   { const fc=$('#fcomp'); if(fc) fc.onsubmit = async e => { e.preventDefault(); const d=Object.fromEntries(new FormData(fc).entries());
     if(await docSet('compras', 'c'+Date.now(), sinVacios({que:d.que.trim(), para:d.para.trim(), fecha:HOY, pidio:S.email||''}))){ toast('Agregado'); render(); } }; }
