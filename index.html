@@ -147,7 +147,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.7';
+const VERSION = 'v7.8';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -179,7 +179,7 @@ const PERFILES = { 'de_antoni@hotmail.com':'Claudio' };   // email -> nombre (su
 const PUBLIC_FORM = 'https://mitash-lab.github.io/solicitud.html';
 const linkForm = (cliente, sede) => PUBLIC_FORM + (cliente ? '?' + new URLSearchParams(Object.entries({cliente, sede}).filter(([,v]) => v)).toString() : '');
 
-const S = { view:(location.hash||'#taller').slice(1), equipos:[], servicios:[], tallerDb:[], sol:[], vis:{}, contactos:{}, internos:{}, r:0,
+const S = { view:(location.hash||'#taller').slice(1), equipos:[], servicios:[], tallerDb:[], sol:[], vis:{}, contactos:{}, internos:{}, equipos_cli:{}, r:0,
   f:{ tal:'hacer', cat:'', ven:MES, ped:'abiertos' } };
 
 // ---------------------------------------------------------------- datos (Supabase)
@@ -217,14 +217,24 @@ function armarBase(inf, ter){
     e.activo = e.tipo==='Termómetro' ? e.ultima >= sumarDias(tanda[kt(e)],-21) : e.ultima >= sumarDias(HOY,-730); });
   S.equipos = [...eq.values()]; S.servicios = serv;
 }
+// Equipos de clientes cargados a mano o por WhatsApp (centrífugas, estufas...) con los trabajos hechos en el lugar
+const masMeses = (f,n) => { const d=new Date(f+'T12:00'); d.setMonth(d.getMonth()+n); return isoD(d); };
+function sumarEquiposCli(){
+  S.equipos = S.equipos.filter(e=>!e.doc);
+  Object.entries(S.equipos_cli||{}).forEach(([id,x])=>{ if(!x.ultima) return; const rep=+x.frecuencia||0;
+    S.equipos.push({clave:'cli:'+id, doc:id, tipo:x.tipo||'Equipo', cliente:x.cliente, sector:x.sede||'', id_equipo:x.id_equipo||'(sin ID)', marca:x.marca||'',
+      ultima:x.ultima, frecuencia_meses:rep, proxima: rep ? masMeses(x.ultima,rep) : '9999-12-31', activo:!!rep, ultimo_trabajo:x.ultimo_trabajo||'', historial:x.historial||[]}); });
+  S.r++;
+}
 async function cargarVis(){ if(LOCAL) return; const {data,error}=await sb.from('docs').select('id,data').eq('coleccion','visitas'); if(!error) S.vis=Object.fromEntries(data.map(d=>[d.id,d.data])); }
 async function cargarTodo(){
   const local = f => fetch(f,{cache:'no-store'}).then(r=>r.json());
   const [inf, ter] = LOCAL ? await Promise.all([local('historial.json'), local('termometros.json')])
                            : await Promise.all([cargarTabla('informes'), cargarTabla('termometros')]);
   armarBase(inf, ter);
-  if(LOCAL){ demo(); S.solOk=true; return; }
-  await Promise.all([cargarTaller(),cargarSol(),cargarVis(),cargarCol('contactos'),cargarCol('internos')]);
+  if(LOCAL){ demo(); S.solOk=true; sumarEquiposCli(); return; }
+  await Promise.all([cargarTaller(),cargarSol(),cargarVis(),cargarCol('contactos'),cargarCol('internos'),cargarCol('equipos_cli')]);
+  sumarEquiposCli();
 }
 // Colecciones simples en "docs": contactos de clientes y equipos internos de Mitash (patrones, termómetros de referencia...)
 async function cargarCol(col){ if(LOCAL) return; const {data,error}=await sb.from('docs').select('id,data').eq('coleccion',col); if(!error) S[col]=Object.fromEntries(data.map(d=>[d.id,d.data])); }
@@ -311,7 +321,8 @@ function render(){
 }
 window.addEventListener('hashchange', () => { S.view = location.hash.slice(1)||'inicio'; render(); window.scrollTo(0,0); });
 
-const resumenCat = L => ['M','T','R'].map(c=>[c,L.filter(t=>(t.cat||CAT(t.tipo))===c).length]).filter(([,n])=>n).map(([c,n])=>tagCat(c,n)).join(' ');
+const resumenCat = L => [...['M','T'].map(c=>[c,L.filter(t=>(t.cat||CAT(t.tipo))===c).length]).filter(([,n])=>n).map(([c,n])=>tagCat(c,n)),
+  ...agrupar(L.filter(t=>(t.cat||CAT(t.tipo))==='R'), t=>(t.tipo||'equipo').toLowerCase()).map(([k,X])=>`<span class="tag R">${X.length} ${esc(k)}</span>`)].join(' ');
 
 function tarjetaViaje(v){
   const lle = llevarA(v), ret = retirarDe(v), ven = vencenEn(v.cliente, v.fecha.slice(0,7)).filter(e=>!enTaller(e));
@@ -443,11 +454,11 @@ function vVencimientos(){
   const E = vencimientos().filter(e => sel==='atr' ? atrasado(e) : e.proxima.slice(0,7)===sel);
   const nAtr = vencimientos().filter(atrasado).length;
   const grupos = agrupar(E, e=>e.cliente+'\u0000'+(e.sector||'')).sort((a,b)=>b[1].length-a[1].length);
-  return `<h1>Vencimientos</h1><p class="sub">Próximas calibraciones de cada cliente, según la última que hicimos. <a href="#contactos">Contactos de clientes</a></p>
+  return `<div class="row"><div class="grow"><h1>Vencimientos</h1></div><button class="btn pri" data-ntrab>+ Equipo o trabajo hecho</button></div><p class="sub">Próximas calibraciones y mantenimientos de cada cliente. <a href="#contactos">Contactos de clientes</a></p>
   <div class="chips" id="chven"><button class="chip ${sel==='atr'?'on':''}" data-v="atr">Atrasados · ${nAtr}</button>${meses.map(m=>`<button class="chip ${sel===m?'on':''}" data-v="${m}">${cap(mesTxt(m))} · ${vencimientos().filter(e=>e.proxima.slice(0,7)===m).length}</button>`).join('')}${chipInt}</div>
   ${grupos.length ? grupos.map(([k,X])=>{ const [c,sede]=k.split('\u0000'); const v=viajePara(c); const nt=X.filter(enTaller).length;
     return `<div class="card"><div class="row"><div class="grow"><div class="cli">${esc(c)}${sede?` <span class="muted" style="font-weight:500">· ${esc(sede)}</span>`:''}</div>
-      <div style="margin-top:6px">${resumenCat(X.map(e=>({cat:CAT(e.tipo)})))}${nt?` <span class="tag acc">${nt} ya en el taller</span>`:''}${v?` <span class="tag acc">${cuando(v.fecha)}</span>`:''}</div></div></div>
+      <div style="margin-top:6px">${resumenCat(X.map(e=>({cat:CAT(e.tipo), tipo:e.tipo})))}${nt?` <span class="tag acc">${nt} ya en el taller</span>`:''}${v?` <span class="tag acc">${cuando(v.fecha)}</span>`:''}</div></div></div>
       <details class="more"><summary>Ver equipos</summary><div class="items">${X.sort((a,b)=>String(a.id_equipo).localeCompare(String(b.id_equipo),undefined,{numeric:true})).map(e=>`<span class="it click ${enTaller(e)?'listo':''}" data-eq="${esc(e.clave)}" style="padding-right:9px"><span class="mono">${esc(e.id_equipo||e.serie||'?')}</span><span class="small muted">${fmt(e.proxima)}</span></span>`).join('')}</div></details>
       <div class="row" style="margin-top:10px"><button class="btn sm" data-aviso="${esc(k)}">Avisar al cliente</button>${v?'':`<button class="btn sm" data-nvis-cli="${esc(c)}" data-nvis-sede="${esc(sede)}">Agendar visita</button>`}</div></div>`; }).join('')
     : `<div class="card flat empty">No vence nada ${sel==='atr'?'atrasado':'en '+mesTxt(sel)}.</div>`}`;
@@ -629,8 +640,37 @@ function fichaEquipo(clave){
       <div><span class="grow muted">Cliente</span><b>${esc(e.cliente||'—')}${e.sector?' · '+esc(e.sector):''}</b></div>
       ${e.serie&&e.serie!==e.id_equipo?`<div><span class="grow muted">N° de serie</span><span class="mono">${esc(e.serie)}</span></div>`:''}
       ${e.marca||e.modelo?`<div><span class="grow muted">Marca</span><span>${esc([e.marca,e.modelo].filter(Boolean).join(' '))}</span></div>`:''}
-      <div><span class="grow muted">Frecuencia</span><span>cada ${e.frecuencia_meses} meses</span></div></div>
-    <h2 style="margin-top:16px">Historial</h2><div class="list">${H.map(s=>`<div><div class="grow"><b class="mono">${esc(s.informe)}</b> <span class="small muted">${fmtA(s.fecha)}</span><div class="small muted">${esc([s.trabajo,s.resultado].filter(Boolean).join(' · '))}</div></div></div>`).join('')||'<div class="muted">Sin informes.</div>'}</div>`);
+      <div><span class="grow muted">Frecuencia</span><span>${e.frecuencia_meses?'cada '+e.frecuencia_meses+' meses':'no se repite'}</span></div></div>
+    ${e.doc?`<button class="btn sm" data-trabeq="${esc(e.doc)}">+ Registrar otro trabajo</button>`:''}
+    <h2 style="margin-top:16px">Historial</h2><div class="list">${(e.historial||[]).slice().reverse().map(h=>`<div><div class="grow"><b>${esc(h.trabajo)}</b> <span class="small muted">${fmtA(h.fecha)} · ${esc(h.clase||'')}${h.por?' · '+esc(h.por):''}</span></div></div>`).join('')}${H.map(s=>`<div><div class="grow"><b class="mono">${esc(s.informe)}</b> <span class="small muted">${fmtA(s.fecha)}</span><div class="small muted">${esc([s.trabajo,s.resultado].filter(Boolean).join(' · '))}</div></div></div>`).join('')||'<div class="muted">Sin informes.</div>'}</div>`);
+  $$('[data-trabeq]').forEach(el=>el.onclick = () => formTrabajo(el.dataset.trabeq));
+}
+// Equipo o trabajo hecho en el lugar (no pasa por el taller). Si el equipo es nuevo, se crea.
+const TIPOS_EQ = ['Centrífuga','Microcentrífuga','Estufa','Heladera / freezer','Autoclave','Cabina / campana','Baño termostático','Microscopio','Agitador','Otro'];
+function formTrabajo(docId){
+  const x = docId ? S.equipos_cli[docId] : {};
+  hoja(`<div class="hd"><h2>${docId?'Nuevo trabajo':'Equipo o trabajo hecho'}</h2><button class="ibtn" data-cerrar aria-label="Cerrar">×</button></div>
+  <p class="small muted" style="margin-top:0">Para trabajos hechos en el cliente (cambio de tubos, carbones, preventivos). No pasa por el taller. Si el equipo no estaba, se agrega.</p>
+  <form class="f" id="ftrab">
+    <label>Cliente<input name="cliente" list="dlcli" required autocomplete="off" value="${esc(x.cliente||'')}"></label>${dlClientes()}
+    <div class="two"><label>Equipo<select name="tipo">${TIPOS_EQ.map(o=>`<option ${x.tipo===o?'selected':''}>${o}</option>`).join('')}</select></label><label>ID / n° de serie<input name="id_equipo" required value="${esc(x.id_equipo||'')}"></label></div>
+    <div class="two"><label>Marca / modelo<input name="marca" value="${esc(x.marca||'')}"></label><label>Sede<input name="sede" value="${esc(x.sede||'')}"></label></div>
+    <label>Trabajo realizado<input name="trabajo" required placeholder="Ej.: cambio de tubos"></label>
+    <div class="pick">${['Correctivo','Preventivo','Calibración / verificación'].map((c,i)=>`<label><input type="radio" name="clase" value="${c}" ${(x.clase||'Correctivo')===c?'checked':''}> ${c}</label>`).join('')}</div>
+    <div class="two"><label>¿Se repite?<select name="frecuencia"><option value="0">No, una sola vez</option>${[3,6,12,24].map(n=>`<option value="${n}" ${+x.frecuencia===n?'selected':''}>Cada ${n} meses</option>`).join('')}</select></label>
+      <label>Fecha<input name="fecha" type="date" value="${HOY}"></label></div>
+    <div class="err" id="terr"></div><button class="btn pri" style="justify-content:center">Guardar</button></form>`);
+  const fm = $('#ftrab');
+  fm.querySelectorAll('[name=clase]').forEach(r=>r.onchange=()=>{ if(r.checked && r.value!=='Correctivo' && fm.frecuencia.value==='0') fm.frecuencia.value='12'; if(r.checked && r.value==='Correctivo') fm.frecuencia.value='0'; });
+  fm.onsubmit = async e => { e.preventDefault(); const d = Object.fromEntries(new FormData(fm).entries());
+    const cliente = (clientes().find(c=>mismoCli(c,d.cliente))||d.cliente).trim();
+    const prev = docId ? [docId, x] : Object.entries(S.equipos_cli).find(([,y])=>mismoCli(y.cliente,cliente) && limpioId(y.id_equipo)===limpioId(d.id_equipo));
+    const id = prev ? prev[0] : 'e'+Date.now(), y = prev ? prev[1] : {};
+    const hist = [...(y.historial||[]), {fecha:d.fecha||HOY, trabajo:d.trabajo.trim(), clase:d.clase, por:S.email||''}];
+    const dato = sinVacios({...y, cliente, sede:d.sede.trim(), tipo:d.tipo, id_equipo:d.id_equipo.trim(), marca:d.marca.trim(), frecuencia:+d.frecuencia,
+      ultima:d.fecha||HOY, ultimo_trabajo:d.trabajo.trim(), clase:d.clase, historial:hist});
+    if(await docSet('equipos_cli', id, dato)){ sumarEquiposCli(); cerrar();
+      toast(`Guardado: ${d.tipo} ${dato.id_equipo} de ${cliente}${+d.frecuencia?' · próximo '+fmtA(masMeses(dato.ultima,+d.frecuencia)):' · no se repite'}`); render(); } };
 }
 function buscar(){
   hoja(`<div class="hd"><h2>Buscar equipo</h2><button class="ibtn" data-cerrar aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
@@ -646,13 +686,14 @@ function buscar(){
 function menu(){
   hoja(`<div class="hd"><h2>Más</h2><button class="ibtn" data-cerrar aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div class="menu">
     <button id="mbus">Buscar equipo</button>
+    <button id="mtrab">Agregar equipo o trabajo hecho en el lugar</button>
         <a href="#contactos" data-cerrar>Contactos de clientes</a>
     <a href="#revisar" data-cerrar>Datos a revisar</a>
     <a href="v5.html">Versión anterior (pagos y termómetros Mitash)</a>
     <a href="${PUBLIC_FORM}" target="_blank" rel="noopener">Ver el formulario de pedidos</a>
     ${LOCAL?'':'<button id="msal">Cerrar sesión</button>'}</div>
     <p class="small muted" style="margin-top:14px">${esc(S.email||'Modo prueba')} · ${VERSION}</p>`);
-  $('#mbus').onclick = buscar;
+  $('#mbus').onclick = buscar; $('#mtrab').onclick = () => formTrabajo();
   if($('#msal')) $('#msal').onclick = async () => { await sb.auth.signOut(); location.reload(); };
 }
 function toast(t){ const d=document.createElement('div'); d.className='toast'; d.textContent=t; document.body.appendChild(d); setTimeout(()=>d.remove(),2200); }
@@ -666,6 +707,7 @@ function bind(){
   $$('[data-acc]').forEach(el=>el.onclick = e => { e.stopPropagation(); accionTaller(el.dataset.ids.split(','), el.dataset.acc); });
   $$('[data-ning]').forEach(el=>el.onclick = formIngreso);
   $$('[data-nvis]').forEach(el=>el.onclick = () => formViaje(null));
+  $$('[data-ntrab]').forEach(el=>el.onclick = () => formTrabajo());
   $$('[data-crono]').forEach(el=>el.onclick = formCronograma);
   $$('[data-nvis-cli]').forEach(el=>el.onclick = () => formViaje(null, {cliente:el.dataset.nvisCli, sede:el.dataset.nvisSede||''}));
   $$('[data-evis]').forEach(el=>el.onclick = () => formViaje(el.dataset.evis));
