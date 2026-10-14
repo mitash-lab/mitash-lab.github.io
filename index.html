@@ -39,13 +39,14 @@ main{max-width:860px;margin:0 auto;padding:18px 16px 110px}
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:15;background:#fff;border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
 nav.tabs a{flex:1;text-align:center;text-decoration:none;color:var(--muted);font-size:11px;font-weight:600;padding:8px 2px 9px;position:relative}
 nav.tabs a .i{display:block;height:24px;margin-bottom:1px} nav.tabs a .i svg,.ibtn svg{width:22px;height:22px}
-nav.tabs a.on{color:var(--acc)} 
+nav.tabs a.on{color:var(--acc)} nav.tabs .lg{display:none} nav.tabs .dot.gris{background:var(--muted)}
+@media (max-width:420px){ nav.tabs a{font-size:10px;padding:8px 0 9px} }
 nav.tabs .dot{position:absolute;top:4px;left:calc(50% + 8px);background:var(--bad);color:#fff;border-radius:99px;font-size:10px;padding:0 5px;line-height:16px}
 @media (min-width:900px){
   nav.tabs{top:62px;bottom:auto;left:max(16px,calc(50% - 640px));right:auto;width:200px;flex-direction:column;background:none;border:0;gap:2px}
   nav.tabs a{display:flex;align-items:center;gap:10px;font-size:14px;padding:10px 12px;border-radius:12px;text-align:left}
   nav.tabs a .i{display:inline-flex;height:auto} nav.tabs a.on{background:var(--acc-soft)}
-  nav.tabs .dot{position:static;margin-left:auto}
+  nav.tabs .dot{position:static;margin-left:auto} nav.tabs .lg{display:inline} nav.tabs .cort{display:none}
   main{padding-left:240px;max-width:1100px;padding-bottom:40px}
 }
 
@@ -147,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.16';
+const VERSION = 'v7.18';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -179,7 +180,7 @@ const PERFILES = { 'de_antoni@hotmail.com':'Claudio' };   // email -> nombre (su
 const PUBLIC_FORM = 'https://mitash-lab.github.io/solicitud.html';
 const linkForm = (cliente, sede) => PUBLIC_FORM + (cliente ? '?' + new URLSearchParams(Object.entries({cliente, sede}).filter(([,v]) => v)).toString() : '');
 
-const S = { view:(location.hash||'#taller').slice(1), equipos:[], servicios:[], tallerDb:[], sol:[], vis:{}, contactos:{}, internos:{}, equipos_cli:{}, compras:{}, r:0,
+const S = { view:(location.hash||'#taller').slice(1), equipos:[], servicios:[], tallerDb:[], sol:[], vis:{}, contactos:{}, internos:{}, equipos_cli:{}, compras:{}, trabajos_lugar:{}, seguimiento:{}, r:0,
   f:{ tal:'hacer', cat:'', ven:MES, ped:'abiertos' } };
 
 // ---------------------------------------------------------------- datos (Supabase)
@@ -224,7 +225,18 @@ function sumarEquiposCli(){
   Object.entries(S.equipos_cli||{}).forEach(([id,x])=>{ if(!x.ultima) return; const rep=+x.frecuencia||0;
     S.equipos.push({clave:'cli:'+id, doc:id, tipo:x.tipo||'Equipo', cliente:x.cliente, sector:x.sede||'', id_equipo:x.id_equipo||'(sin ID)', marca:x.marca||'',
       ultima:x.ultima, frecuencia_meses:rep, proxima: rep ? masMeses(x.ultima,rep) : '9999-12-31', activo:!!rep, ultimo_trabajo:x.ultimo_trabajo||'', historial:x.historial||[]}); });
+  aplicarSeguimiento();
   S.r++;
+}
+// Seguimiento de vencimientos por cliente/sede y mes: "avisado, espera respuesta", "se hace" o "no se hace este año".
+// "No se hace" pasa el vencimiento al año siguiente (intentamos recuperar al cliente). Al calibrarse de nuevo, la marca deja de aplicar sola.
+const segId = (c, sede, mes) => 's:'+c+'|'+(sede||'')+'|'+mes;
+const SEG = {avisado:'Avisado · espera respuesta', se_hace:'Se hace', no_se_hace:'No se hace este año'};
+function aplicarSeguimiento(){
+  S.equipos.forEach(e=>{ if(e.proxima_orig) e.proxima = e.proxima_orig; delete e.seg; delete e.proxima_orig; delete e.salteado;
+    for(let i=0; i<5 && e.proxima; i++){ const s = S.seguimiento[segId(e.cliente, e.sector, e.proxima.slice(0,7))]; if(!s) break;
+      if(s.estado!=='no_se_hace'){ e.seg = s; break; }
+      e.proxima_orig ||= e.proxima; e.salteado = s; e.proxima = masMeses(e.proxima, 12); } });
 }
 async function cargarVis(){ if(LOCAL) return; const {data,error}=await sb.from('docs').select('id,data').eq('coleccion','visitas'); if(!error) S.vis=Object.fromEntries(data.map(d=>[d.id,d.data])); }
 async function cargarTodo(){
@@ -233,7 +245,7 @@ async function cargarTodo(){
                            : await Promise.all([cargarTabla('informes'), cargarTabla('termometros')]);
   armarBase(inf, ter);
   if(LOCAL){ demo(); S.solOk=true; sumarEquiposCli(); return; }
-  await Promise.all([cargarTaller(),cargarSol(),cargarVis(),cargarCol('contactos'),cargarCol('internos'),cargarCol('equipos_cli'),cargarCol('compras')]);
+  await Promise.all([cargarTaller(),cargarSol(),cargarVis(),cargarCol('contactos'),cargarCol('internos'),cargarCol('equipos_cli'),cargarCol('compras'),cargarCol('trabajos_lugar'),cargarCol('seguimiento')]);
   sumarEquiposCli();
 }
 // Colecciones simples en "docs": contactos de clientes y equipos internos de Mitash (patrones, termómetros de referencia...)
@@ -313,13 +325,15 @@ function yo(){ return PERFILES[(S.email||'').toLowerCase()] || ''; }
 
 // ---------------------------------------------------------------- vistas
 // Simple: 3 pestañas. El taller es la pantalla principal.
-const TABS = [['taller','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18"/></svg>','Taller'],['recorridos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h11v10H3zM14 9h4l3 3v4h-7"/><circle cx="7" cy="17.5" r="1.5"/><circle cx="17" cy="17.5" r="1.5"/></svg>','Viajes'],['vencimientos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>','Vencimientos'],['pedidos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4z"/></svg>','Pedidos']];
+// [ruta, ícono, nombre, nombre corto para el celular]
+const TABS = [['taller','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18"/></svg>','Taller'],['recorridos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h11v10H3zM14 9h4l3 3v4h-7"/><circle cx="7" cy="17.5" r="1.5"/><circle cx="17" cy="17.5" r="1.5"/></svg>','Viajes'],['vencimientos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>','Vencimientos','Vencim.'],['lugar','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>','En el lugar'],['internos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 13l3.5-3.5M12 5V3M8 3h8"/></svg>','Internos'],['pedidos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4z"/></svg>','Pedidos']];
 function render(){
   S.r++;
   const nPed = S.sol.filter(s=>s.estado==='nueva').length;
   const vista = S.view.split('/')[0]==='inicio' ? 'taller' : S.view.split('/')[0];
-  $('#tabs').innerHTML = TABS.filter(([v])=>v!=='pedidos' || S.solOk).map(([v,i,t])=>`<a href="#${v}" class="${vista===v?'on':''}"><span class="i">${i}</span>${t}${v==='pedidos'&&nPed?`<span class="dot">${nPed}</span>`:''}</a>`).join('');
-  const V = {taller:vTaller, recorridos:vRecorridos, contactos:vContactos, compras:vCompras, cliente:vCliente, internos:vInternosPag, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
+  $('#tabs').innerHTML = TABS.filter(([v])=>v!=='pedidos' || S.solOk).map(([v,i,t,c])=>{ const n = v==='pedidos' ? nPed : v==='lugar' ? trabajosLugar().length : v==='internos' ? internosAvisar().length : 0;
+    return `<a href="#${v}" class="${vista===v?'on':''}"><span class="i">${i}</span>${c?`<span class="lg">${t}</span><span class="cort">${c}</span>`:t}${n?`<span class="dot ${v==='pedidos'?'':'gris'}">${n}</span>`:''}</a>`; }).join('');
+  const V = {taller:vTaller, recorridos:vRecorridos, contactos:vContactos, compras:vCompras, lugar:vLugar, cliente:vCliente, internos:vInternosPag, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
   $('#main').innerHTML = V(); bind();
 }
 window.addEventListener('hashchange', () => { S.view = location.hash.slice(1)||'inicio'; render(); window.scrollTo(0,0); });
@@ -341,7 +355,8 @@ function tarjetaViaje(v){
       ${aRetirarDe(v).length?`<div><div><b>Retirar · ${plural(aRetirarDe(v).length,'equipo')}</b><span class="small">${aRetirarDe(v).map(t=>esc((t.nombre||t.tipo)+(t.detalle?' ('+t.detalle+')':''))).join(' · ')}</span></div></div>`:''}
       ${ret.length?`<div><div><b>Pedidos para retirar · ${plural(nRet,'equipo')}</b><span class="small">${ret.map(s=>esc(itemsSol(s).map(i=>i.tipo).filter(Boolean).join(', ')||s.pedido||'pedido')).join(' · ')}</span></div></div>`:''}
       ${ven.length?`<div><div><b>Vencen ${ven.some(atrasado)?'o están atrasados':'este mes'}</b><span class="small">${resumenCat(ven.map(e=>({cat:CAT(e.tipo)})))} · aprovechar el viaje</span></div></div>`:''}
-      ${!v.tareas && !lle.length && !ret.length && !ven.length?'<div><div class="small muted">Nada pendiente para este cliente.</div></div>':''}
+      ${trabajosDe(v).length?`<div><div><b>Trabajo a realizar en el lugar</b><span class="small">${trabajosDe(v).map(lineaTL).join(' · ')}</span></div></div>`:''}
+      ${!v.tareas && !lle.length && !ret.length && !ven.length && !trabajosDe(v).length?'<div><div class="small muted">Nada pendiente para este cliente.</div></div>':''}
     </div>
     <button class="btn ok" data-hvis="${esc(v.id)}">✓ Viaje hecho</button></div>`;
 }
@@ -421,10 +436,12 @@ async function accionTaller(ids, acc){
 }
 
 function vRecorridos(){
+  const TL = trabajosLugar(), nComp = Object.values(S.compras).filter(x=>!x.comprado).length;
   const P = proximas(), hechos = visitas().filter(v=>v.hecho).sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,10);
   return `<div class="row"><div class="grow"><h1>Viajes</h1></div><button class="btn" data-crono>Cargar cronograma</button><button class="btn pri" data-nvis>+ Viaje</button></div>
-  <p class="sub">A dónde hay que ir y qué llevar, retirar o hacer en cada lugar.</p>
+  <p class="sub">A dónde hay que ir y qué llevar, retirar o hacer en cada lugar. <a href="#compras">Lista de compras${nComp?' · '+nComp+' pendientes':''}</a></p>
   ${P.length ? agrupar(P, v=>v.fecha).map(([f,V])=>V.map(tarjetaViaje).join('')).join('') : `<div class="card flat empty">No hay viajes cargados.<br><span class="small">Cargá los recorridos de Lucho con "+ Viaje".</span></div>`}
+  ${TL.length?`<a class="card flat click" href="#lugar" style="display:block;text-decoration:none;color:inherit"><b>Trabajos a realizar en el lugar · ${TL.length}</b><div class="small muted">Arreglos, cambios de repuesto y validaciones de cabinas en clientes ›</div></a>`:''}
   ${hechos.length?`<details class="card flat"><summary class="click"><b>Viajes hechos</b> <span class="muted">· últimos ${hechos.length}</span></summary><div class="list" style="margin-top:8px">${hechos.map(v=>`<div><div class="grow"><b>${esc(v.cliente)}</b> <span class="small muted">${fmtA(v.fecha)} · ${esc(v.tecnico||'')}</span><div class="small muted">${esc(v.resumen||v.tareas||'')}</div></div><button class="btn sm" data-evis="${esc(v.id)}">Ver</button></div>`).join('')}</div></details>`:''}`;
 }
 
@@ -519,14 +536,15 @@ function vVencimientos(){
     <div class="chips" id="chven"><button class="chip" data-v="atr">Atrasados</button>${meses.map(m=>`<button class="chip" data-v="${m}">${cap(mesTxt(m))}</button>`).join('')}${chipInt}</div>${vInternos()}`;
   const E = vencimientos().filter(e => sel==='atr' ? atrasado(e) : e.proxima.slice(0,7)===sel);
   const nAtr = vencimientos().filter(atrasado).length;
-  const grupos = agrupar(E, e=>e.cliente+'\u0000'+(e.sector||'')).sort((a,b)=>b[1].length-a[1].length);
+  const grupos = agrupar(E, e=>e.cliente+'¦'+(e.sector||'')).sort((a,b)=>b[1].length-a[1].length);
   return `<div class="row"><div class="grow"><h1>Vencimientos</h1></div><button class="btn pri" data-ntrab>+ Equipo o trabajo hecho</button></div><p class="sub">Próximas calibraciones y mantenimientos de cada cliente. <a href="#contactos">Contactos de clientes</a></p>
   <div class="chips" id="chven"><button class="chip ${sel==='atr'?'on':''}" data-v="atr">Atrasados · ${nAtr}</button>${meses.map(m=>`<button class="chip ${sel===m?'on':''}" data-v="${m}">${cap(mesTxt(m))} · ${vencimientos().filter(e=>e.proxima.slice(0,7)===m).length}</button>`).join('')}${chipInt}</div>
-  ${grupos.length ? grupos.map(([k,X])=>{ const [c,sede]=k.split('\u0000'); const v=viajePara(c); const nt=X.filter(enTaller).length;
+  ${grupos.length ? grupos.map(([k,X])=>{ const [c,sede]=k.split('¦'); const v=viajePara(c); const nt=X.filter(enTaller).length; const sg=(X.find(e=>e.seg)||{}).seg;
     return `<div class="card"><div class="row"><div class="grow"><div class="cli click" data-cli="${esc(c)}">${esc(c)} <span class="muted">›</span>${sede?` <span class="muted" style="font-weight:500">· ${esc(sede)}</span>`:''}</div>
-      <div style="margin-top:6px">${resumenCat(X.map(e=>({cat:CAT(e.tipo), tipo:e.tipo})))}${nt?` <span class="tag acc">${nt} ya en el taller</span>`:''}${v?` <span class="tag acc">${cuando(v.fecha)}</span>`:''}</div></div></div>
+      <div style="margin-top:6px">${resumenCat(X.map(e=>({cat:CAT(e.tipo), tipo:e.tipo})))}${nt?` <span class="tag acc">${nt} ya en el taller</span>`:''}${v?` <span class="tag acc">${cuando(v.fecha)}</span>`:''}${sg?` <span class="tag ${sg.estado==='se_hace'?'ok':'warn'}">${SEG[sg.estado]}${sg.estado==='avisado'?' desde '+fmt(sg.fecha):''}</span>`:''}</div></div></div>
       <details class="more"><summary>Ver equipos</summary><div class="items">${X.sort((a,b)=>String(a.id_equipo).localeCompare(String(b.id_equipo),undefined,{numeric:true})).map(e=>`<span class="it click ${enTaller(e)?'listo':''}" data-eq="${esc(e.clave)}" style="padding-right:9px"><span class="mono">${esc(e.id_equipo||e.serie||'?')}</span><span class="small muted">${fmt(e.proxima)}</span></span>`).join('')}</div></details>
-      <div class="row" style="margin-top:10px"><button class="btn sm" data-aviso="${esc(k)}">Avisar al cliente</button>${v?'':`<button class="btn sm" data-nvis-cli="${esc(c)}" data-nvis-sede="${esc(sede)}">Agendar visita</button>`}</div></div>`; }).join('')
+      <div class="row" style="margin-top:10px;flex-wrap:wrap"><button class="btn sm" data-aviso="${esc(k)}">Avisar al cliente</button>${v?'':`<button class="btn sm" data-nvis-cli="${esc(c)}" data-nvis-sede="${esc(sede)}">Agendar visita</button>`}</div>
+      <div class="row" style="margin-top:6px;flex-wrap:wrap"><span class="small muted">Respuesta:</span>${Object.entries(SEG).map(([est,t])=>`<button class="btn sm ${sg&&sg.estado===est?'pri':''}" data-seg="${esc(k)}" data-est="${est}">${est==='avisado'?'Avisado, espera respuesta':t}</button>`).join('')}</div></div>`; }).join('')
     : `<div class="card flat empty">No vence nada ${sel==='atr'?'atrasado':'en '+mesTxt(sel)}.</div>`}`;
 }
 function mensajeAviso(c, sede, E, mes){
@@ -534,8 +552,21 @@ function mensajeAviso(c, sede, E, mes){
   return `Hola! Te escribimos de Mitash. ${mes<MES?'Ya está vencida':'En '+mesTxt(mes)+' vence'} la calibración de ${plural(E.length,'equipo')} de ${c}${sede?` (sede ${sede})`:''}: ${lista}.\n`+
     `Para coordinar, podés completar este formulario: ${linkForm(c,sede)}`;
 }
+async function marcarSeg(k, est){
+  const [c,sede]=k.split('¦'); const sel=S.f.ven;
+  const E = vencimientos().filter(e=>e.cliente===c && (e.sector||'')===sede && (sel==='atr'?atrasado(e):e.proxima.slice(0,7)===sel));
+  const meses = [...new Set(E.map(e=>e.proxima.slice(0,7)))], ids = meses.map(m=>segId(c,sede,m));
+  if(ids.every(id=>S.seguimiento[id] && S.seguimiento[id].estado===est)){ for(const id of ids) await docDel('seguimiento', id); toast('Marca quitada'); }
+  else {
+    if(est==='no_se_hace' && !confirm(`${c}${sede?' · '+sede:''}: no se hace este año.\nSale de la lista y vuelve a aparecer en ${mesTxt(sumarMeses(meses[0],12))}. ¿Confirmás?`)) return;
+    for(const [i,id] of ids.entries()){ const prev = S.seguimiento[id]||{};
+      if(!await docSet('seguimiento', id, sinVacios({cliente:c, sede, mes:meses[i], estado:est, fecha:HOY, avisado:est==='avisado'?HOY:(prev.avisado||null), por:S.email||null}))) return; }
+    toast(est==='no_se_hace' ? 'Listo. Vuelve a aparecer el año que viene' : SEG[est]);
+  }
+  aplicarSeguimiento(); S.r++; render();
+}
 function avisar(k){
-  const [c,sede]=k.split('\u0000'); const sel=S.f.ven;
+  const [c,sede]=k.split('¦'); const sel=S.f.ven;
   const E = vencimientos().filter(e=>e.cliente===c && (e.sector||'')===sede && (sel==='atr'?atrasado(e):e.proxima.slice(0,7)===sel));
   const txt = mensajeAviso(c, sede, E, sel==='atr'?sumarMeses(MES,-1):sel);
   const ult = contactoDe(c) || S.sol.filter(s=>mismoCli(clienteSol(s),c) && s.telefono)[0]; const tel = ult ? waNum(ult.telefono) : '';
@@ -543,8 +574,10 @@ function avisar(k){
     <p class="small muted">El mensaje lo mandás vos. El sistema no le escribe solo a los clientes.</p>
     <form class="f"><textarea rows="7" id="txtav">${esc(txt)}</textarea></form>
     <div class="row" style="margin-top:12px"><button class="btn pri" id="copav">Copiar mensaje</button>
-    <a class="btn" target="_blank" rel="noopener" href="https://wa.me/${tel}?text=${encodeURIComponent(txt)}">Abrir WhatsApp${tel?'':' (elegís el contacto)'}</a></div>`);
+    <a class="btn" target="_blank" rel="noopener" href="https://wa.me/${tel}?text=${encodeURIComponent(txt)}">Abrir WhatsApp${tel?'':' (elegís el contacto)'}</a></div>
+    <button class="btn ok" id="mavis" style="margin-top:10px;width:100%;justify-content:center">Ya le avisé: queda esperando respuesta</button>`);
   $('#copav').onclick = async () => { try{ await navigator.clipboard.writeText($('#txtav').value); toast('Mensaje copiado'); }catch(e){ $('#txtav').select(); } };
+  $('#mavis').onclick = async () => { cerrar(); const sg=(E.find(e=>e.seg)||{}).seg; if(!sg || sg.estado!=='avisado') await marcarSeg(k, 'avisado'); };
 }
 
 function vPedidos(){
@@ -717,6 +750,69 @@ function fichaEquipo(clave){
 }
 // Equipo o trabajo hecho en el lugar (no pasa por el taller). Si el equipo es nuevo, se crea.
 const TIPOS_EQ = ['Centrífuga','Microcentrífuga','Estufa','Heladera / freezer','Autoclave','Cabina / campana','Baño termostático','Microscopio','Agitador','Otro'];
+// Trabajos A REALIZAR en el lugar del cliente (cambio de repuesto, arreglo, mantenimiento de cabinas...): no pasan por el taller.
+// Si hace falta un repuesto, queda también en la lista de compras. Al marcarlo hecho, pasa al historial del equipo.
+const trabajosLugar = () => Object.entries(S.trabajos_lugar).map(([id,x])=>({id,...x})).filter(x=>!x.hecho).sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha)));
+const mismaSede = (a,b) => !a || !b || norm(a).includes(norm(b)) || norm(b).includes(norm(a));
+const trabajosDe = v => trabajosLugar().filter(x=>mismoCli(x.cliente,v.cliente) && mismaSede(x.sede,v.sede));
+const compraDe = x => x.compra && S.compras[x.compra];
+const lineaTL = x => `${esc(x.tipo_equipo||'Equipo')}${x.id_equipo?' <span class="mono">'+esc(x.id_equipo)+'</span>':''}: ${esc(x.trabajo)}`;
+function tarjetaTL(x){ const c = compraDe(x), v = viajePara(x.cliente);
+  return `<div class="card"><div class="row"><div class="grow"><div class="cli">${esc(x.cliente)}${x.sede?` <span class="muted" style="font-weight:500">· ${esc(x.sede)}</span>`:''}</div>
+    <div style="margin-top:4px">${lineaTL(x)}</div>
+    <div style="margin-top:6px"><span class="tag">${esc(x.clase||'Correctivo')}${+x.frecuencia?' · cada '+x.frecuencia+' meses':' · una sola vez'}</span>
+      ${c?` <span class="tag ${c.comprado?'ok':'warn'}">repuesto ${c.comprado?'comprado':'falta comprar'}: ${esc(c.que)}</span>`:''}${v?` <span class="tag acc">viaje ${cuando(v.fecha)}</span>`:''}</div>
+    <div class="small muted" style="margin-top:4px">Anotado ${fmtA(x.fecha)}${x.pidio?' por '+esc(x.pidio):''}</div></div>
+    <button class="btn sm" data-etl="${esc(x.id)}">Editar</button></div>
+    <div class="row" style="margin-top:10px"><button class="btn sm ok" data-htl="${esc(x.id)}">✓ Hecho</button>${v?'':`<button class="btn sm" data-nvis-cli="${esc(x.cliente)}" data-nvis-sede="${esc(x.sede||'')}">Agendar viaje</button>`}</div></div>`; }
+function vLugar(){
+  const TL = trabajosLugar(), nComp = Object.values(S.compras).filter(x=>!x.comprado).length;
+  const hechos = Object.entries(S.trabajos_lugar).map(([id,x])=>({id,...x})).filter(x=>x.hecho).sort((a,b)=>String(b.hecho).localeCompare(String(a.hecho))).slice(0,15);
+  const cab = vencimientos().filter(e=>e.doc && /cabina|campana/i.test(e.tipo) && e.proxima.slice(0,7)<=sumarMeses(MES,2));
+  return `<div class="row"><div class="grow"><h1>Trabajos en el lugar</h1></div><button class="btn pri" data-ntl>+ Trabajo a realizar</button></div>
+  <p class="sub">Arreglos, cambios de repuesto y validaciones de cabinas que se hacen en el cliente (no están en el taller). <a href="#compras">Lista de compras${nComp?' · '+nComp:''}</a></p>
+  ${TL.length ? TL.map(tarjetaTL).join('') : '<div class="card flat empty">No hay trabajos pendientes en clientes.</div>'}
+  ${cab.length?`<div class="sec-t">Cabinas a validar (próximos 3 meses) <span class="n">· ${cab.length}</span></div><div class="card"><div class="list">${cab.map(e=>`<div class="click" data-eq="${esc(e.clave)}"><div class="grow"><b>${esc(e.cliente)}</b>${e.sector?` <span class="muted">· ${esc(e.sector)}</span>`:''}<div class="small muted">${esc(e.tipo)} <span class="mono">${esc(e.id_equipo)}</span> · última ${fmtA(e.ultima)}</div></div><span class="tag ${e.proxima<HOY?'bad':e.proxima.slice(0,7)===MES?'warn':'ok'}">${fmtA(e.proxima)}</span></div>`).join('')}</div></div>`:''}
+  ${hechos.length?`<details class="card flat"><summary class="click"><b>Hechos</b> <span class="muted">· últimos ${hechos.length}</span></summary><div class="list" style="margin-top:8px">${hechos.map(x=>`<div><div class="grow"><b>${esc(x.cliente)}</b> <span class="small muted">${fmtA(x.hecho)}</span><div class="small muted">${lineaTL(x)}</div></div></div>`).join('')}</div></details>`:''}
+  <p class="small muted">Para cargar un trabajo que ya se hizo y no estaba anotado: <button class="btn sm" data-ntrab>Equipo o trabajo hecho</button></p>`;
+}
+function formTrabajoLugar(id){
+  const x = id ? S.trabajos_lugar[id] : {clase:'Correctivo', frecuencia:0}, c = id && compraDe(x);
+  hoja(`<div class="hd"><h2>${id?'Trabajo a realizar':'Nuevo trabajo a realizar en el lugar'}</h2><button class="ibtn" data-cerrar aria-label="Cerrar">×</button></div>
+  <p class="small muted" style="margin-top:0">Trabajo para hacer en el cliente (no está en el taller). Si hace falta un repuesto, se anota también en la lista de compras.</p>
+  <form class="f" id="ftl">
+    <div class="two"><label>Cliente<input name="cliente" list="dlcli" required autocomplete="off" value="${esc(x.cliente||'')}"></label><label>Sede<input name="sede" required value="${esc(x.sede||'')}"></label></div>${dlClientes()}
+    <div class="two"><label>Equipo<select name="tipo_equipo">${[...new Set([x.tipo_equipo,...TIPOS_EQ].filter(Boolean))].map(o=>`<option ${x.tipo_equipo===o?'selected':''}>${o}</option>`).join('')}</select></label><label>ID / n° de serie<input name="id_equipo" value="${esc(x.id_equipo||'')}"></label></div>
+    <label>Qué hay que hacer<input name="trabajo" required value="${esc(x.trabajo||'')}" placeholder="Ej.: cambio de carbones"></label>
+    <div class="pick">${['Correctivo','Preventivo'].map(k=>`<label><input type="radio" name="clase" value="${k}" ${(x.clase||'Correctivo')===k?'checked':''}> ${k}</label>`).join('')}</div>
+    <label>¿Se repite?<select name="frecuencia"><option value="0">No, una sola vez</option>${[3,6,12,24].map(n=>`<option value="${n}" ${+x.frecuencia===n?'selected':''}>Cada ${n} meses</option>`).join('')}</select></label>
+    <label>Repuesto a comprar (si hace falta)<input name="repuesto" value="${esc(c?c.que:'')}" placeholder="Ej.: carbones para centrífuga Rolco" ${c&&c.comprado?'disabled':''}></label>
+    <div class="row"><button class="btn pri" style="flex:1;justify-content:center">Guardar</button>${id?'<button type="button" class="btn" id="bortl">Borrar</button>':''}</div></form>`);
+  const fm = $('#ftl');
+  fm.querySelectorAll('[name=clase]').forEach(r=>r.onchange=()=>{ if(r.checked) fm.frecuencia.value = r.value==='Correctivo' ? '0' : (fm.frecuencia.value==='0'?'12':fm.frecuencia.value); });
+  fm.tipo_equipo.onchange = () => { if(/cabina/i.test(fm.tipo_equipo.value)){ fm.clase.value='Preventivo'; fm.querySelector('[value=Preventivo]').checked=true; fm.frecuencia.value='12'; } };
+  fm.onsubmit = async e => { e.preventDefault(); const d = Object.fromEntries(new FormData(fm).entries());
+    const cliente = (clientes().find(k=>mismoCli(k,d.cliente))||d.cliente).trim(), tid = id||'w'+Date.now();
+    let compra = x.compra || null;
+    if((d.repuesto||'').trim()){ const para = `${d.trabajo.trim()} · ${cliente}${d.sede.trim()?' · '+d.sede.trim():''}`;
+      compra = compra || 'c'+Date.now(); if(!await docSet('compras', compra, sinVacios({...(S.compras[compra]||{fecha:HOY, pidio:S.email||''}), que:d.repuesto.trim(), para, trabajo:tid}))) return; }
+    else if(compra && S.compras[compra] && !S.compras[compra].comprado){ await docDel('compras', compra); compra = null; }
+    if(await docSet('trabajos_lugar', tid, sinVacios({...x, cliente, sede:d.sede.trim(), tipo_equipo:d.tipo_equipo, id_equipo:d.id_equipo.trim(), trabajo:d.trabajo.trim(),
+      clase:d.clase, frecuencia:+d.frecuencia, compra, fecha:x.fecha||HOY, pidio:x.pidio||S.email||''}))){ cerrar(); toast('Guardado como trabajo a realizar en '+cliente); render(); } };
+  if(id) $('#bortl').onclick = async () => { if(confirm('¿Borrar este trabajo?')){ const k=compraDe(x); if(k && !k.comprado) await docDel('compras', x.compra); await docDel('trabajos_lugar', id); cerrar(); render(); } };
+}
+// Hecho: queda en el historial del equipo del cliente (si es preventivo, vuelve a aparecer en vencimientos)
+async function trabajoLugarHecho(id){
+  const x = S.trabajos_lugar[id]; if(!x) return;
+  const f = prompt(`¿Qué día se hizo "${x.trabajo}" en ${x.cliente}? (dd/mm, vacío = hoy)`, ''); if(f===null) return;
+  const m = f.trim().match(/^(\d{1,2})\/(\d{1,2})$/), fecha = m ? `${HOY.slice(0,4)}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}` : HOY;
+  const idEq = x.id_equipo || '(sin ID)';
+  const prev = Object.entries(S.equipos_cli).find(([,y])=>mismoCli(y.cliente,x.cliente) && limpioId(y.id_equipo)===limpioId(idEq) && (x.id_equipo || mismaSede(y.sede,x.sede) && y.tipo===x.tipo_equipo));
+  const eid = prev ? prev[0] : 'e'+Date.now(), y = prev ? prev[1] : {};
+  const dato = sinVacios({...y, cliente:x.cliente, sede:x.sede||y.sede, tipo:x.tipo_equipo, id_equipo:idEq, frecuencia:+x.frecuencia||+y.frecuencia||0, ultima:fecha, ultimo_trabajo:x.trabajo, clase:x.clase,
+    historial:[...(y.historial||[]), {fecha, trabajo:x.trabajo, clase:x.clase, por:S.email||''}]});
+  if(await docSet('equipos_cli', eid, dato) && await docSet('trabajos_lugar', id, {...x, hecho:fecha})){ sumarEquiposCli(); toast('Hecho: quedó en el historial del equipo'); render(); }
+}
 function formTrabajo(docId){
   const x = docId ? S.equipos_cli[docId] : {};
   hoja(`<div class="hd"><h2>${docId?'Nuevo trabajo':'Equipo o trabajo hecho'}</h2><button class="ibtn" data-cerrar aria-label="Cerrar">×</button></div>
@@ -791,6 +887,10 @@ function bind(){
   $$('[data-hvis]').forEach(el=>el.onclick = () => viajeHecho(el.dataset.hvis));
   $$('[data-eq]').forEach(el=>el.onclick = () => fichaEquipo(el.dataset.eq));
   $$('[data-aviso]').forEach(el=>el.onclick = () => avisar(el.dataset.aviso));
+  $$('[data-seg]').forEach(el=>el.onclick = () => marcarSeg(el.dataset.seg, el.dataset.est));
+  $$('[data-ntl]').forEach(el=>el.onclick = () => formTrabajoLugar(null));
+  $$('[data-etl]').forEach(el=>el.onclick = () => formTrabajoLugar(el.dataset.etl));
+  $$('[data-htl]').forEach(el=>el.onclick = () => trabajoLugarHecho(el.dataset.htl));
   $$('[data-nint]').forEach(el=>el.onclick = () => formInterno(null));
   $$('[data-eint]').forEach(el=>el.onclick = () => formInterno(el.dataset.eint));
   $$('[data-ncon]').forEach(el=>el.onclick = () => formContacto(null));
