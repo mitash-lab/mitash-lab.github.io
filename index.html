@@ -147,7 +147,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.15';
+const VERSION = 'v7.16';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -189,7 +189,7 @@ const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && location.s
 const conTiempo = (p,ms) => Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(new Error('tiempo')),ms))]);
 
 async function cargarTabla(t){ const out=[]; for(let i=0;;i+=1000){ const {data,error}=await sb.from(t).select('data').range(i,i+999); if(error) throw error; out.push(...data.map(d=>d.data)); if(data.length<1000) break; } return out; }
-const deTaller = t => ({retirar:!!t.retirar, tid:String(t.id), ref:t.ref||null, fecha:t.fecha, tipo:t.tipo||'', cliente:t.cliente, sede:t.sede||'', id_equipo:t.id_equipo||'', serie:t.serie||'',
+const deTaller = t => ({retirar:!!t.retirar, en_camino:t.en_camino||null, en_camino_desde:t.en_camino_desde||null, tid:String(t.id), ref:t.ref||null, fecha:t.fecha, tipo:t.tipo||'', cliente:t.cliente, sede:t.sede||'', id_equipo:t.id_equipo||'', serie:t.serie||'',
   equipo:t.equipo||null, pedido:t.pedido||'', detalle:t.detalle||'', solicitud:t.solicitud||null, listo:t.listo||null, entregado:t.entregado||null, informe:t.informe||null, cerrado:!!t.cerrado});
 // El taller se guarda en la tabla "docs" (colección "taller"): no necesita tablas nuevas. Lo mismo podrá escribir el bot.
 async function cargarTaller(){ if(LOCAL) return;
@@ -363,7 +363,7 @@ function lote(X){
   const t0 = X[0], c = t0.cat, est = t0.estado;
   const ids = X.map(t=>t.tid).join(',');
   const desc = c==='R' ? esc(t0.tipo + (X.length===1 && t0.nombre?' '+t0.nombre:'') + (t0.detalle?' · '+t0.detalle:'')) : '';
-  return `<div class="lote"><div class="row"><div class="grow">${tagCat(c, X.length)} <span class="small muted">${t0.sede?esc(t0.sede)+' · ':''}entró ${fmt(t0.fecha)}</span>
+  return `<div class="lote"><div class="row"><div class="grow">${tagCat(c, X.length)} <span class="small muted">${t0.sede?esc(t0.sede)+' · ':''}entró ${fmt(t0.fecha)}</span>${est==='listo'&&t0.en_camino?` <span class="tag warn">en camino con ${esc(t0.en_camino)} desde ${fmt(t0.en_camino_desde)}</span>`:''}
       ${desc?`<div class="small" style="margin-top:4px">${desc}</div>`:''}</div>
     ${est==='retirar'?`<button class="btn sm pri" data-acc="retirado" data-ids="${ids}">Retirado</button>`
       : est==='hacer'?`<button class="btn sm" data-acc="listo" data-ids="${ids}">✓ ${X.length>1?'Todo listo':'Listo'}</button>`
