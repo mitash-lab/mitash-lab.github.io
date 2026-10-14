@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.22';
+const VERSION = 'v7.23';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -379,7 +379,7 @@ function lote(X){
   const t0 = X[0], c = t0.cat, est = t0.estado;
   const ids = X.map(t=>t.tid).join(',');
   const desc = c==='R' ? esc(t0.tipo + (X.length===1 && t0.nombre?' '+t0.nombre:'') + (t0.detalle?' · '+t0.detalle:'')) : '';
-  return `<div class="lote"><div class="row"><div class="grow">${tagCat(c, X.length)} <span class="small muted">${t0.sede?esc(t0.sede)+' · ':''}entró ${fmt(t0.fecha)}</span>${est==='listo'&&t0.en_camino?` <span class="tag warn">en camino con ${esc(t0.en_camino)} desde ${fmt(t0.en_camino_desde)}</span>`:''}${est==='retirar'?(v=>v?` <span class="tag acc">viaje asignado: ${cuando(v.fecha)}${v.tecnico?' · '+esc(v.tecnico):''}</span>`:' <span class="tag bad">sin viaje asignado</span>')(viajePara(t0.cliente, t0.sede)):''}
+  return `<div class="lote"><div class="row"><div class="grow">${tagCat(c, X.length)} <span class="small muted">${t0.sede?esc(t0.sede)+' · ':''}entró ${fmt(t0.fecha)}</span>${est==='listo'&&t0.en_camino?` <span class="tag warn">en camino con ${esc(t0.en_camino)} desde ${fmt(t0.en_camino_desde)}</span>`:''}${est==='retirar'?(v=>v?` <span class="tag acc">viaje asignado: ${cuando(v.fecha)}${v.tecnico?' · '+esc(v.tecnico):''}</span>`:' <span class="tag bad">pendiente · sin viaje asignado</span>')(viajePara(t0.cliente, t0.sede)):''}
       ${desc?`<div class="small" style="margin-top:4px">${desc}</div>`:''}</div>
     ${est==='retirar'?`<button class="btn sm pri" data-acc="retirado" data-ids="${ids}">Retirado</button>`
       : est==='hacer'?`<button class="btn sm" data-acc="listo" data-ids="${ids}">✓ ${X.length>1?'Todo listo':'Listo'}</button><button class="btn sm ghost" data-acc="entregado" data-ids="${ids}" title="Si ya se entregó sin pasar por listo">Entregado</button>`
@@ -436,11 +436,28 @@ async function accionTaller(ids, acc){
   if(ok){ if(acc==='entregado') sumarEquiposCli(); toast(acc==='listo'?'Marcado como listo':acc==='entregado'?'Marcado como entregado':acc==='retirado'?'Pasó al taller':'Listo, vuelve a "Listos"'); render(); }
 }
 
+// Pendientes: todo lo que hay que retirar, entregar o hacer en un cliente y todavía no tiene viaje asignado
+function pendientesSinViaje(){
+  const L = [...taller().filter(t=>t.estado==='retirar').map(t=>({k:'Retirar', cli:t.cliente, sede:t.sede, txt:(t.nombre||t.tipo)+(t.detalle?' ('+t.detalle+')':'')})),
+    ...taller().filter(t=>t.estado==='listo' && !t.en_camino).map(t=>({k:'Entregar', cli:t.cliente, sede:t.sede, txt:t.nombre||t.tipo})),
+    ...trabajosLugar().map(x=>({k:'Trabajo en el lugar', cli:x.cliente, sede:x.sede, html:lineaTL(x)}))].filter(x=>!viajePara(x.cli, x.sede));
+  return agrupar(L, x=>x.cli+'¦'+(x.sede||''));
+}
+function vPendientes(){
+  const G = pendientesSinViaje(); if(!G.length) return '';
+  return `<div class="sec-t">Pendientes · sin viaje asignado <span class="n">· ${G.length} ${G.length===1?'lugar':'lugares'}</span></div>
+  ${G.map(([k,X])=>{ const [c,sede]=k.split('¦');
+    return `<div class="card"><div class="row"><div class="grow"><div class="cli">${esc(c)}${sede?` <span class="muted" style="font-weight:500">· ${esc(sede)}</span>`:''}</div></div><span class="tag bad">pendiente</span></div>
+      <div class="todo">${agrupar(X, x=>x.k).map(([tipo,Y])=>`<div><div><b>${tipo} · ${Y.length}</b><span class="small">${Y.map(y=>y.html||esc(y.txt)).join(' · ')}</span></div></div>`).join('')}</div>
+      <button class="btn sm" data-nvis-cli="${esc(c)}" data-nvis-sede="${esc(sede)}">Asignar viaje</button></div>`; }).join('')}
+  <div class="sec-t">Viajes agendados</div>`;
+}
 function vRecorridos(){
   const TL = trabajosLugar(), nComp = Object.values(S.compras).filter(x=>!x.comprado).length;
   const P = proximas(), hechos = visitas().filter(v=>v.hecho).sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,10);
   return `<div class="row"><div class="grow"><h1>Viajes</h1></div><button class="btn" data-crono>Cargar cronograma</button><button class="btn pri" data-nvis>+ Viaje</button></div>
   <p class="sub">A dónde hay que ir y qué llevar, retirar o hacer en cada lugar.</p>
+  ${vPendientes()}
   ${P.length ? agrupar(P, v=>v.fecha).map(([f,V])=>V.map(tarjetaViaje).join('')).join('') : `<div class="card flat empty">No hay viajes cargados.<br><span class="small">Cargá los recorridos de Lucho con "+ Viaje".</span></div>`}
   ${TL.length?`<a class="card flat click" href="#lugar" style="display:block;text-decoration:none;color:inherit"><b>Trabajos a realizar en el lugar · ${TL.length}</b><div class="small muted">Arreglos, cambios de repuesto y validaciones de cabinas en clientes ›</div></a>`:''}
   ${hechos.length?`<details class="card flat"><summary class="click"><b>Viajes hechos</b> <span class="muted">· últimos ${hechos.length}</span></summary><div class="list" style="margin-top:8px">${hechos.map(v=>`<div><div class="grow"><b>${esc(v.cliente)}</b> <span class="small muted">${fmtA(v.fecha)} · ${esc(v.tecnico||'')}</span><div class="small muted">${esc(v.resumen||v.tareas||'')}</div></div><button class="btn sm" data-evis="${esc(v.id)}">Ver</button></div>`).join('')}</div></details>`:''}`;
@@ -775,7 +792,7 @@ function tarjetaTL(x){ const c = compraDe(x), v = viajePara(x.cliente, x.sede);
   return `<div class="card"><div class="row"><div class="grow"><div class="cli">${esc(x.cliente)}${x.sede?` <span class="muted" style="font-weight:500">· ${esc(x.sede)}</span>`:''}</div>
     <div style="margin-top:4px">${lineaTL(x)}</div>
     <div style="margin-top:6px"><span class="tag">${esc(x.clase||'Correctivo')}${+x.frecuencia?' · cada '+x.frecuencia+' meses':' · una sola vez'}</span>
-      ${c?` <span class="tag ${c.comprado?'ok':'warn'}">${c.comprado?'repuesto comprado: falta ir a cambiarlo':'falta comprar'}: ${esc(c.que)}</span>`:''}${x.avisar_antes?` <span class="tag">avisar ${x.avisar_antes} ${+x.avisar_antes===1?'mes':'meses'} antes</span>`:''}${v?` <span class="tag acc">viaje ${cuando(v.fecha)}</span>`:''}</div>
+      ${c?` <span class="tag ${c.comprado?'ok':'warn'}">${c.comprado?'repuesto comprado: falta ir a cambiarlo':'falta comprar'}: ${esc(c.que)}</span>`:''}${x.avisar_antes?` <span class="tag">avisar ${x.avisar_antes} ${+x.avisar_antes===1?'mes':'meses'} antes</span>`:''}${v?` <span class="tag acc">viaje ${cuando(v.fecha)}</span>`:' <span class="tag bad">pendiente · sin viaje asignado</span>'}</div>
     <div class="small muted" style="margin-top:4px">Anotado ${fmtA(x.fecha)}${x.pidio?' por '+esc(x.pidio):''}</div></div>
     <button class="btn sm" data-etl="${esc(x.id)}">Editar</button></div>
     <div class="row" style="margin-top:10px"><button class="btn sm ok" data-htl="${esc(x.id)}">✓ Hecho</button>${v?'':`<button class="btn sm" data-nvis-cli="${esc(x.cliente)}" data-nvis-sede="${esc(x.sede||'')}">Agendar viaje</button>`}</div></div>`; }
