@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.18';
+const VERSION = 'v7.19';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -223,7 +223,7 @@ const masMeses = (f,n) => { const d=new Date(f+'T12:00'); d.setMonth(d.getMonth(
 function sumarEquiposCli(){
   S.equipos = S.equipos.filter(e=>!e.doc);
   Object.entries(S.equipos_cli||{}).forEach(([id,x])=>{ if(!x.ultima) return; const rep=+x.frecuencia||0;
-    S.equipos.push({clave:'cli:'+id, doc:id, tipo:x.tipo||'Equipo', cliente:x.cliente, sector:x.sede||'', id_equipo:x.id_equipo||'(sin ID)', marca:x.marca||'',
+    S.equipos.push({clave:'cli:'+id, doc:id, tipo:x.tipo||'Equipo', cliente:x.cliente, sector:x.sede||'', id_equipo:x.id_equipo||(x.serie?'N/S '+x.serie:'(sin ID)'), serie:x.serie||'', marca:x.marca||'',
       ultima:x.ultima, frecuencia_meses:rep, proxima: rep ? masMeses(x.ultima,rep) : '9999-12-31', activo:!!rep, ultimo_trabajo:x.ultimo_trabajo||'', historial:x.historial||[]}); });
   aplicarSeguimiento();
   S.r++;
@@ -756,7 +756,7 @@ const trabajosLugar = () => Object.entries(S.trabajos_lugar).map(([id,x])=>({id,
 const mismaSede = (a,b) => !a || !b || norm(a).includes(norm(b)) || norm(b).includes(norm(a));
 const trabajosDe = v => trabajosLugar().filter(x=>mismoCli(x.cliente,v.cliente) && mismaSede(x.sede,v.sede));
 const compraDe = x => x.compra && S.compras[x.compra];
-const lineaTL = x => `${esc(x.tipo_equipo||'Equipo')}${x.id_equipo?' <span class="mono">'+esc(x.id_equipo)+'</span>':''}: ${esc(x.trabajo)}`;
+const lineaTL = x => `${esc(x.tipo_equipo||'Equipo')}${x.id_equipo?' ID <span class="mono">'+esc(x.id_equipo)+'</span>':''}${x.serie?' N/S <span class="mono">'+esc(x.serie)+'</span>':''}: ${esc(x.trabajo)}`;
 function tarjetaTL(x){ const c = compraDe(x), v = viajePara(x.cliente);
   return `<div class="card"><div class="row"><div class="grow"><div class="cli">${esc(x.cliente)}${x.sede?` <span class="muted" style="font-weight:500">· ${esc(x.sede)}</span>`:''}</div>
     <div style="margin-top:4px">${lineaTL(x)}</div>
@@ -782,7 +782,8 @@ function formTrabajoLugar(id){
   <p class="small muted" style="margin-top:0">Trabajo para hacer en el cliente (no está en el taller). Si hace falta un repuesto, se anota también en la lista de compras.</p>
   <form class="f" id="ftl">
     <div class="two"><label>Cliente<input name="cliente" list="dlcli" required autocomplete="off" value="${esc(x.cliente||'')}"></label><label>Sede<input name="sede" required value="${esc(x.sede||'')}"></label></div>${dlClientes()}
-    <div class="two"><label>Equipo<select name="tipo_equipo">${[...new Set([x.tipo_equipo,...TIPOS_EQ].filter(Boolean))].map(o=>`<option ${x.tipo_equipo===o?'selected':''}>${o}</option>`).join('')}</select></label><label>ID / n° de serie<input name="id_equipo" value="${esc(x.id_equipo||'')}"></label></div>
+    <div class="two"><label>Equipo<select name="tipo_equipo">${[...new Set([x.tipo_equipo,...TIPOS_EQ].filter(Boolean))].map(o=>`<option ${x.tipo_equipo===o?'selected':''}>${o}</option>`).join('')}</select></label><label>ID<input name="id_equipo" value="${esc(x.id_equipo||'')}"></label></div>
+    <label>N° de serie (si lo tienen)<input name="serie" value="${esc(x.serie||'')}"></label>
     <label>Qué hay que hacer<input name="trabajo" required value="${esc(x.trabajo||'')}" placeholder="Ej.: cambio de carbones"></label>
     <div class="pick">${['Correctivo','Preventivo'].map(k=>`<label><input type="radio" name="clase" value="${k}" ${(x.clase||'Correctivo')===k?'checked':''}> ${k}</label>`).join('')}</div>
     <label>¿Se repite?<select name="frecuencia"><option value="0">No, una sola vez</option>${[3,6,12,24].map(n=>`<option value="${n}" ${+x.frecuencia===n?'selected':''}>Cada ${n} meses</option>`).join('')}</select></label>
@@ -797,7 +798,7 @@ function formTrabajoLugar(id){
     if((d.repuesto||'').trim()){ const para = `${d.trabajo.trim()} · ${cliente}${d.sede.trim()?' · '+d.sede.trim():''}`;
       compra = compra || 'c'+Date.now(); if(!await docSet('compras', compra, sinVacios({...(S.compras[compra]||{fecha:HOY, pidio:S.email||''}), que:d.repuesto.trim(), para, trabajo:tid}))) return; }
     else if(compra && S.compras[compra] && !S.compras[compra].comprado){ await docDel('compras', compra); compra = null; }
-    if(await docSet('trabajos_lugar', tid, sinVacios({...x, cliente, sede:d.sede.trim(), tipo_equipo:d.tipo_equipo, id_equipo:d.id_equipo.trim(), trabajo:d.trabajo.trim(),
+    if(await docSet('trabajos_lugar', tid, sinVacios({...x, cliente, sede:d.sede.trim(), tipo_equipo:d.tipo_equipo, id_equipo:d.id_equipo.trim(), serie:d.serie.trim(), trabajo:d.trabajo.trim(),
       clase:d.clase, frecuencia:+d.frecuencia, compra, fecha:x.fecha||HOY, pidio:x.pidio||S.email||''}))){ cerrar(); toast('Guardado como trabajo a realizar en '+cliente); render(); } };
   if(id) $('#bortl').onclick = async () => { if(confirm('¿Borrar este trabajo?')){ const k=compraDe(x); if(k && !k.comprado) await docDel('compras', x.compra); await docDel('trabajos_lugar', id); cerrar(); render(); } };
 }
@@ -806,10 +807,11 @@ async function trabajoLugarHecho(id){
   const x = S.trabajos_lugar[id]; if(!x) return;
   const f = prompt(`¿Qué día se hizo "${x.trabajo}" en ${x.cliente}? (dd/mm, vacío = hoy)`, ''); if(f===null) return;
   const m = f.trim().match(/^(\d{1,2})\/(\d{1,2})$/), fecha = m ? `${HOY.slice(0,4)}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}` : HOY;
-  const idEq = x.id_equipo || '(sin ID)';
-  const prev = Object.entries(S.equipos_cli).find(([,y])=>mismoCli(y.cliente,x.cliente) && limpioId(y.id_equipo)===limpioId(idEq) && (x.id_equipo || mismaSede(y.sede,x.sede) && y.tipo===x.tipo_equipo));
+  const idEq = x.id_equipo || (x.serie ? '' : '(sin ID)');
+  const prev = Object.entries(S.equipos_cli).find(([,y])=>mismoCli(y.cliente,x.cliente) && (x.id_equipo ? limpioId(y.id_equipo)===limpioId(x.id_equipo)
+    : x.serie ? limpioId(y.serie)===limpioId(x.serie) : limpioId(y.id_equipo)===limpioId(idEq) && mismaSede(y.sede,x.sede) && y.tipo===x.tipo_equipo));
   const eid = prev ? prev[0] : 'e'+Date.now(), y = prev ? prev[1] : {};
-  const dato = sinVacios({...y, cliente:x.cliente, sede:x.sede||y.sede, tipo:x.tipo_equipo, id_equipo:idEq, frecuencia:+x.frecuencia||+y.frecuencia||0, ultima:fecha, ultimo_trabajo:x.trabajo, clase:x.clase,
+  const dato = sinVacios({...y, cliente:x.cliente, sede:x.sede||y.sede, tipo:x.tipo_equipo, id_equipo:idEq||y.id_equipo, serie:x.serie||y.serie, frecuencia:+x.frecuencia||+y.frecuencia||0, ultima:fecha, ultimo_trabajo:x.trabajo, clase:x.clase,
     historial:[...(y.historial||[]), {fecha, trabajo:x.trabajo, clase:x.clase, por:S.email||''}]});
   if(await docSet('equipos_cli', eid, dato) && await docSet('trabajos_lugar', id, {...x, hecho:fecha})){ sumarEquiposCli(); toast('Hecho: quedó en el historial del equipo'); render(); }
 }
@@ -819,7 +821,8 @@ function formTrabajo(docId){
   <p class="small muted" style="margin-top:0">Para trabajos hechos en el cliente (cambio de tubos, carbones, preventivos). No pasa por el taller. Si el equipo no estaba, se agrega.</p>
   <form class="f" id="ftrab">
     <label>Cliente<input name="cliente" list="dlcli" required autocomplete="off" value="${esc(x.cliente||'')}"></label>${dlClientes()}
-    <div class="two"><label>Equipo<select name="tipo">${TIPOS_EQ.map(o=>`<option ${x.tipo===o?'selected':''}>${o}</option>`).join('')}</select></label><label>ID / n° de serie<input name="id_equipo" required value="${esc(x.id_equipo||'')}"></label></div>
+    <div class="two"><label>Equipo<select name="tipo">${TIPOS_EQ.map(o=>`<option ${x.tipo===o?'selected':''}>${o}</option>`).join('')}</select></label><label>ID<input name="id_equipo" value="${esc(x.id_equipo||'')}"></label></div>
+    <label>N° de serie<input name="serie" value="${esc(x.serie||'')}" placeholder="Es otro dato; alcanza con ID o n° de serie"></label>
     <div class="two"><label>Marca / modelo<input name="marca" value="${esc(x.marca||'')}"></label><label>Sede<input name="sede" value="${esc(x.sede||'')}"></label></div>
     <label>Trabajo realizado<input name="trabajo" required placeholder="Ej.: cambio de tubos"></label>
     <div class="pick">${['Correctivo','Preventivo','Calibración / verificación'].map((c,i)=>`<label><input type="radio" name="clase" value="${c}" ${(x.clase||'Correctivo')===c?'checked':''}> ${c}</label>`).join('')}</div>
@@ -830,13 +833,14 @@ function formTrabajo(docId){
   fm.querySelectorAll('[name=clase]').forEach(r=>r.onchange=()=>{ if(r.checked && r.value!=='Correctivo' && fm.frecuencia.value==='0') fm.frecuencia.value='12'; if(r.checked && r.value==='Correctivo') fm.frecuencia.value='0'; });
   fm.onsubmit = async e => { e.preventDefault(); const d = Object.fromEntries(new FormData(fm).entries());
     const cliente = (clientes().find(c=>mismoCli(c,d.cliente))||d.cliente).trim();
-    const prev = docId ? [docId, x] : Object.entries(S.equipos_cli).find(([,y])=>mismoCli(y.cliente,cliente) && limpioId(y.id_equipo)===limpioId(d.id_equipo));
+    if(!d.id_equipo.trim() && !d.serie.trim()){ $('#terr').textContent='Poné el ID o el n° de serie (alcanza con uno).'; return; }
+    const prev = docId ? [docId, x] : Object.entries(S.equipos_cli).find(([,y])=>mismoCli(y.cliente,cliente) && (d.id_equipo.trim() ? limpioId(y.id_equipo)===limpioId(d.id_equipo) : limpioId(y.serie)===limpioId(d.serie)));
     const id = prev ? prev[0] : 'e'+Date.now(), y = prev ? prev[1] : {};
     const hist = [...(y.historial||[]), {fecha:d.fecha||HOY, trabajo:d.trabajo.trim(), clase:d.clase, por:S.email||''}];
-    const dato = sinVacios({...y, cliente, sede:d.sede.trim(), tipo:d.tipo, id_equipo:d.id_equipo.trim(), marca:d.marca.trim(), frecuencia:+d.frecuencia,
+    const dato = sinVacios({...y, cliente, sede:d.sede.trim(), tipo:d.tipo, id_equipo:d.id_equipo.trim(), serie:d.serie.trim(), marca:d.marca.trim(), frecuencia:+d.frecuencia,
       ultima:d.fecha||HOY, ultimo_trabajo:d.trabajo.trim(), clase:d.clase, historial:hist});
     if(await docSet('equipos_cli', id, dato)){ sumarEquiposCli(); cerrar();
-      toast(`Guardado: ${d.tipo} ${dato.id_equipo} de ${cliente}${+d.frecuencia?' · próximo '+fmtA(masMeses(dato.ultima,+d.frecuencia)):' · no se repite'}`); render(); } };
+      toast(`Guardado: ${d.tipo} ${dato.id_equipo||dato.serie} de ${cliente}${+d.frecuencia?' · próximo '+fmtA(masMeses(dato.ultima,+d.frecuencia)):' · no se repite'}`); render(); } };
 }
 function buscar(){
   hoja(`<div class="hd"><h2>Buscar equipo</h2><button class="ibtn" data-cerrar aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
