@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.23';
+const VERSION = 'v7.24';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -200,6 +200,9 @@ async function cargarTaller(){ if(LOCAL) return;
 async function cargarSol(){ if(LOCAL){ S.solOk=true; return; }
   const {data,error}=await sb.from('solicitudes').select('*').order('creada',{ascending:false}).limit(300); S.solOk=!error; if(!error) S.sol=data; }
 // Base de equipos: sale de los informes de micropipetas y certificados de termómetros que sube la compu de casa.
+// Termómetros de Maipú: cronograma fijo en septiembre y marzo (desde 14/10/2026; antes era agosto y febrero)
+function proxSepMar(f){ const y=+f.slice(0,4), m=+f.slice(5,7);
+  for(let k=4;k<=12;k++){ const mm=(m+k-1)%12+1, yy=y+Math.floor((m+k-1)/12); if(mm===3||mm===9) return `${yy}-${String(mm).padStart(2,'0')}-01`; } }
 function armarBase(inf, ter){
   const serv = [];
   inf.forEach(r=>{ if(!r.fecha||!r.informe) return; const cli = /mitash/i.test(r.cliente||'') ? 'MITASH' : (r.cliente||'');
@@ -214,7 +217,7 @@ function armarBase(inf, ter){
   const tanda = {}, kt = e => nucleo(e.cliente)+'|'+norm(e.sector||'');
   eq.forEach(e=>{ if(e.tipo==='Termómetro' && (!tanda[kt(e)] || e.ultima>tanda[kt(e)])) tanda[kt(e)] = e.ultima; });
   eq.forEach(e=>{ e.frecuencia_meses = e.tipo==='Termómetro' && /maip/i.test(e.cliente) ? 6 : 12;
-    const d = new Date(e.ultima+'T12:00'); d.setMonth(d.getMonth()+e.frecuencia_meses); e.proxima = isoD(d);
+    const d = new Date(e.ultima+'T12:00'); d.setMonth(d.getMonth()+e.frecuencia_meses); e.proxima = e.frecuencia_meses===6 ? proxSepMar(e.ultima) : isoD(d);
     e.activo = e.tipo==='Termómetro' ? e.ultima >= sumarDias(tanda[kt(e)],-21) : e.ultima >= sumarDias(HOY,-730); });
   S.equipos = [...eq.values()]; S.servicios = serv;
 }
