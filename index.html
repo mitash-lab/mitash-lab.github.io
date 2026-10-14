@@ -272,7 +272,7 @@ const memo = (k, fn) => { if(!S['_'+k] || S['_'+k].r!==S.r) S['_'+k]={r:S.r, v:f
 const clientes = () => memo('cli', () => [...new Set([...S.equipos.map(e=>e.cliente), ...S.tallerDb.map(t=>t.cliente)].filter(c=>c && c!=='MITASH'))].sort((a,b)=>a.localeCompare(b)));
 const clienteSol = s => s.cliente_base || clientes().find(c=>mismoCli(c,s.cliente)) || s.cliente;
 const itemsSol = s => Array.isArray(s.items) && s.items.length ? s.items : [];
-const solIngresada = s => S.tallerDb.some(t=>t.solicitud===s.id);
+const solIngresada = s => S.tallerDb.some(t=>t.solicitud===s.id) || Object.values(S.trabajos_lugar||{}).some(x=>x.solicitud===s.id);
 const solAbierta = s => (s.estado==='nueva'||s.estado==='en curso') && !solIngresada(s);
 
 // Taller: cada fila es un equipo. Las micros y termómetros se completan solos con el informe que aparece en el Drive
