@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.27';
+const VERSION = 'v7.28';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -336,7 +336,7 @@ function render(){
   const vista = S.view.split('/')[0]==='inicio' ? 'taller' : S.view.split('/')[0];
   $('#tabs').innerHTML = TABS.filter(([v])=>v!=='pedidos' || S.solOk).map(([v,i,t,c])=>{ const n = v==='pedidos' ? nPed : v==='lugar' ? trabajosLugar().length : v==='compras' ? Object.values(S.compras).filter(x=>!x.comprado).length : v==='internos' ? internosAvisar().length : 0;
     return `<a href="#${v}" class="${vista===v?'on':''}"><span class="i">${i}</span>${c?`<span class="lg">${t}</span><span class="cort">${c}</span>`:t}${n?`<span class="dot ${v==='pedidos'?'':'gris'}">${n}</span>`:''}</a>`; }).join('');
-  const V = {taller:vTaller, recorridos:vRecorridos, contactos:vContactos, clientes:vClientes, compras:vCompras, lugar:vLugar, cliente:vCliente, internos:vInternosPag, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
+  const V = {taller:vTaller, recorridos:vRecorridos, contactos:vClientes, clientes:vClientes, compras:vCompras, lugar:vLugar, cliente:vCliente, internos:vInternosPag, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
   $('#main').innerHTML = V(); bind();
 }
 window.addEventListener('hashchange', () => { S.view = location.hash.slice(1)||'inicio'; render(); window.scrollTo(0,0); });
@@ -530,18 +530,27 @@ function vContactos(){
 const fichasCli = () => Object.entries(S.clientes).map(([id,x])=>({id,...x})).sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre)));
 const textoSedes = x => (x.sedes||[]).map(s=>s.nombre+((s.sectores||[]).length?': '+s.sectores.join(', '):'')).join('\n');
 function vClientes(){
-  const L = fichasCli(), q = norm(S.f.qcli||'');
-  const X = L.filter(x=>!q || norm(x.nombre+' '+textoSedes(x)).includes(q));
-  return `<div class="row"><div class="grow"><h1>Clientes, sedes y sectores</h1></div><button class="btn pri" data-ncli>+ Cliente</button></div>
-  <p class="sub">Cada cliente con sus sedes, y los sectores de las sedes que tienen. Si no tiene sedes, es sede única. El bot usa esta lista para no confundir sedes con sectores. <a href="#contactos">Contactos de clientes</a></p>
-  ${L.length>8?`<input class="card" id="qcli" placeholder="Buscar cliente o sede" value="${esc(S.f.qcli||'')}" style="width:100%;padding:10px 12px;margin-bottom:10px">`:''}
-  ${X.length ? X.map(x=>`<div class="card click" data-ecli="${esc(x.id)}"><div class="cli">${esc(x.nombre)}</div>
-    ${(x.sedes||[]).length ? `<div class="list" style="margin-top:6px">${x.sedes.map(s=>`<div><div class="grow"><b>${esc(s.nombre)}</b>${(s.sectores||[]).length?`<div class="small muted">Sectores: ${s.sectores.map(esc).join(' · ')}</div>`:''}</div></div>`).join('')}</div>`
-      : '<div class="small muted" style="margin-top:4px">Sede única</div>'}${x.notas?`<div class="small muted" style="margin-top:6px">${esc(x.notas)}</div>`:''}</div>`).join('')
+  // una sola hoja: cada cliente con sus sedes, sectores y contactos (los contactos sin ficha también aparecen)
+  const F = fichasCli(), C = contactos(), q = norm(S.f.qcli||'');
+  const sueltos = [...new Set(C.filter(c=>!F.some(x=>mismoCli(x.nombre,c.cliente))).map(c=>c.cliente))].map(n=>({nombre:n}));
+  const L = [...F, ...sueltos].sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre)));
+  const contactosDe = x => C.filter(c=>mismoCli(c.cliente,x.nombre));
+  const X = L.filter(x=>!q || norm(x.nombre+' '+textoSedes(x)+' '+contactosDe(x).map(c=>[c.nombre,c.sede].join(' ')).join(' ')).includes(q));
+  return `<div class="row"><div class="grow"><h1>Clientes</h1></div><button class="btn pri" data-ncli>+ Cliente</button></div>
+  <p class="sub">Cada cliente con sus sedes, los sectores de las sedes que tienen y sus contactos. Si no tiene sedes, es sede única. El bot usa esta lista para no confundir sedes con sectores.</p>
+  ${L.length>8?`<input class="card" id="qcli" placeholder="Buscar cliente, sede o contacto" value="${esc(S.f.qcli||'')}" style="width:100%;padding:10px 12px;margin-bottom:10px">`:''}
+  ${X.length ? X.map(x=>{ const cs = contactosDe(x);
+    return `<div class="card"><div class="row"><div class="grow cli">${esc(x.nombre)}</div>${x.id?`<button class="btn sm" data-ecli="${esc(x.id)}">Editar</button>`:`<button class="btn sm" data-ncli-nom="${esc(x.nombre)}">Cargar sedes</button>`}</div>
+    ${!x.id ? '<div class="small muted" style="margin-top:4px">Sedes sin cargar</div>' : (x.sedes||[]).length ? `<div class="list" style="margin-top:6px">${x.sedes.map(s=>`<div><div class="grow"><b>${esc(s.nombre)}</b>${(s.sectores||[]).length?`<div class="small muted">Sectores: ${s.sectores.map(esc).join(' · ')}</div>`:''}</div></div>`).join('')}</div>`
+      : '<div class="small muted" style="margin-top:4px">Sede única</div>'}${x.notas?`<div class="small muted" style="margin-top:6px">${esc(x.notas)}</div>`:''}
+    <div class="small muted" style="margin:10px 0 2px;font-weight:600">Contactos</div>
+    ${cs.length ? `<div class="list">${cs.map(c=>`<div class="click" data-econ="${esc(c.id)}"><div class="grow">${esc(c.nombre||'Sin nombre')}${c.sede?` <span class="muted">· ${esc(c.sede)}</span>`:''}
+      <div class="small muted">${esc([c.telefono,c.email].filter(Boolean).join(' · '))}</div></div>${c.avisos==='no'?'<span class="tag">sin avisos</span>':''}</div>`).join('')}</div>` : '<div class="small muted">Sin contactos.</div>'}
+    <button class="btn sm" style="margin-top:8px" data-ncon-cli="${esc(x.nombre)}">+ Contacto</button></div>`; }).join('')
     : '<div class="card flat empty">Todavía no hay clientes cargados.<br><span class="small">Cargalos con "+ Cliente".</span></div>'}`;
 }
-function formCliente(id){
-  const x = id ? S.clientes[id] : {};
+function formCliente(id, nombre){
+  const x = id ? S.clientes[id] : {nombre:nombre||''};
   hoja(`<div class="hd"><h2>${id?esc(x.nombre):'Nuevo cliente'}</h2><button class="ibtn" data-cerrar aria-label="Cerrar">×</button></div>
   <form class="f" id="fcli">
     <label>Cliente<input name="nombre" list="dlcli" required autocomplete="off" value="${esc(x.nombre||'')}"></label>${dlClientes()}
@@ -555,8 +564,8 @@ function formCliente(id){
     if(await docSet('clientes', id||'k'+Date.now(), sinVacios({nombre:d.nombre.trim(), sedes:sedes.length?sedes:null, notas:d.notas.trim()}))){ cerrar(); toast('Guardado'); render(); } };
   if(id) $('#borcli').onclick = async () => { if(confirm('¿Borrar este cliente de la lista? (no borra sus equipos ni su historial)')){ await docDel('clientes', id); cerrar(); render(); } };
 }
-function formContacto(id){
-  const x = id ? S.contactos[id] : {};
+function formContacto(id, cliente){
+  const x = id ? S.contactos[id] : {cliente:cliente||''};
   hoja(`<div class="hd"><h2>${id?'Contacto':'Nuevo contacto'}</h2><button class="ibtn" data-cerrar aria-label="Cerrar">×</button></div>
   <form class="f" id="fcon">
     <label>Cliente<input name="cliente" list="dlcli" required autocomplete="off" value="${esc(x.cliente||'')}"></label>${dlClientes()}
@@ -605,7 +614,7 @@ function vVencimientos(){
   const E = vencimientos().filter(e => sel==='atr' ? atrasado(e) : e.proxima.slice(0,7)===sel);
   const nAtr = vencimientos().filter(atrasado).length;
   const grupos = agrupar(E, e=>e.cliente+'¦'+(e.sector||'')).sort((a,b)=>b[1].length-a[1].length);
-  return `<div class="row"><div class="grow"><h1>Vencimientos</h1></div><button class="btn pri" data-ntrab>+ Equipo o trabajo hecho</button></div><p class="sub">Próximas calibraciones y mantenimientos de cada cliente. <a href="#contactos">Contactos de clientes</a></p>
+  return `<div class="row"><div class="grow"><h1>Vencimientos</h1></div><button class="btn pri" data-ntrab>+ Equipo o trabajo hecho</button></div><p class="sub">Próximas calibraciones y mantenimientos de cada cliente. <a href="#clientes">Clientes y contactos</a></p>
   <div class="chips" id="chven"><button class="chip ${sel==='atr'?'on':''}" data-v="atr">Atrasados · ${nAtr}</button>${meses.map(m=>`<button class="chip ${sel===m?'on':''}" data-v="${m}">${cap(mesTxt(m))} · ${vencimientos().filter(e=>e.proxima.slice(0,7)===m).length}</button>`).join('')}${chipInt}</div>
   ${grupos.length ? grupos.map(([k,X])=>{ const [c,sede]=k.split('¦'); const v=viajePara(c, sede); const nt=X.filter(enTaller).length; const sg=(X.find(e=>e.seg)||{}).seg;
     return `<div class="card"><div class="row"><div class="grow"><div class="cli click" data-cli="${esc(c)}">${esc(c)} <span class="muted">›</span>${sede?` <span class="muted" style="font-weight:500">· ${esc(sede)}</span>`:''}</div>
@@ -931,8 +940,7 @@ function menu(){
   hoja(`<div class="hd"><h2>Más</h2><button class="ibtn" data-cerrar aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div class="menu">
     <button id="mbus">Buscar equipo</button>
     <button id="mtrab">Agregar equipo o trabajo hecho en el lugar</button>
-        <a href="#clientes" data-cerrar>Clientes, sedes y sectores</a>
-        <a href="#contactos" data-cerrar>Contactos de clientes</a>
+        <a href="#clientes" data-cerrar>Clientes (sedes, sectores y contactos)</a>
     <a href="#internos" data-cerrar>Equipos internos (patrones)</a>
     <a href="#compras" data-cerrar>Lista de compras</a>
     <a href="#revisar" data-cerrar>Datos a revisar</a>
@@ -974,6 +982,8 @@ function bind(){
   $$('[data-eint]').forEach(el=>el.onclick = () => formInterno(el.dataset.eint));
   $$('[data-ncon]').forEach(el=>el.onclick = () => formContacto(null));
   $$('[data-ncli]').forEach(el=>el.onclick = () => formCliente(null));
+  $$('[data-ncli-nom]').forEach(el=>el.onclick = () => formCliente(null, el.dataset.ncliNom));
+  $$('[data-ncon-cli]').forEach(el=>el.onclick = () => formContacto(null, el.dataset.nconCli));
   $$('[data-ecli]').forEach(el=>el.onclick = () => formCliente(el.dataset.ecli));
   { const qc=$('#qcli'); if(qc) qc.oninput = () => { S.f.qcli = qc.value; const p = qc.selectionStart; render(); const n=$('#qcli'); n.focus(); n.setSelectionRange(p,p); }; }
   $$('[data-econ]').forEach(el=>el.onclick = () => formContacto(el.dataset.econ));
