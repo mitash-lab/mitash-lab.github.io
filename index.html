@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.26';
+const VERSION = 'v7.27';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -180,7 +180,7 @@ const PERFILES = { 'de_antoni@hotmail.com':'Claudio' };   // email -> nombre (su
 const PUBLIC_FORM = 'https://mitash-lab.github.io/solicitud.html';
 const linkForm = (cliente, sede) => PUBLIC_FORM + (cliente ? '?' + new URLSearchParams(Object.entries({cliente, sede}).filter(([,v]) => v)).toString() : '');
 
-const S = { view:(location.hash||'#taller').slice(1), equipos:[], servicios:[], tallerDb:[], sol:[], vis:{}, contactos:{}, internos:{}, equipos_cli:{}, compras:{}, trabajos_lugar:{}, seguimiento:{}, prestamos:{}, r:0,
+const S = { view:(location.hash||'#taller').slice(1), equipos:[], servicios:[], tallerDb:[], sol:[], vis:{}, contactos:{}, clientes:{}, internos:{}, equipos_cli:{}, compras:{}, trabajos_lugar:{}, seguimiento:{}, prestamos:{}, r:0,
   f:{ tal:'hacer', cat:'', ven:MES, ped:'abiertos' } };
 
 // ---------------------------------------------------------------- datos (Supabase)
@@ -248,7 +248,7 @@ async function cargarTodo(){
                            : await Promise.all([cargarTabla('informes'), cargarTabla('termometros')]);
   armarBase(inf, ter);
   if(LOCAL){ demo(); S.solOk=true; sumarEquiposCli(); return; }
-  await Promise.all([cargarTaller(),cargarSol(),cargarVis(),cargarCol('contactos'),cargarCol('internos'),cargarCol('equipos_cli'),cargarCol('compras'),cargarCol('trabajos_lugar'),cargarCol('seguimiento'),cargarCol('prestamos')]);
+  await Promise.all([cargarTaller(),cargarSol(),cargarVis(),cargarCol('contactos'),cargarCol('clientes'),cargarCol('internos'),cargarCol('equipos_cli'),cargarCol('compras'),cargarCol('trabajos_lugar'),cargarCol('seguimiento'),cargarCol('prestamos')]);
   sumarEquiposCli();
 }
 // Colecciones simples en "docs": contactos de clientes y equipos internos de Mitash (patrones, termómetros de referencia...)
@@ -336,7 +336,7 @@ function render(){
   const vista = S.view.split('/')[0]==='inicio' ? 'taller' : S.view.split('/')[0];
   $('#tabs').innerHTML = TABS.filter(([v])=>v!=='pedidos' || S.solOk).map(([v,i,t,c])=>{ const n = v==='pedidos' ? nPed : v==='lugar' ? trabajosLugar().length : v==='compras' ? Object.values(S.compras).filter(x=>!x.comprado).length : v==='internos' ? internosAvisar().length : 0;
     return `<a href="#${v}" class="${vista===v?'on':''}"><span class="i">${i}</span>${c?`<span class="lg">${t}</span><span class="cort">${c}</span>`:t}${n?`<span class="dot ${v==='pedidos'?'':'gris'}">${n}</span>`:''}</a>`; }).join('');
-  const V = {taller:vTaller, recorridos:vRecorridos, contactos:vContactos, compras:vCompras, lugar:vLugar, cliente:vCliente, internos:vInternosPag, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
+  const V = {taller:vTaller, recorridos:vRecorridos, contactos:vContactos, clientes:vClientes, compras:vCompras, lugar:vLugar, cliente:vCliente, internos:vInternosPag, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
   $('#main').innerHTML = V(); bind();
 }
 window.addEventListener('hashchange', () => { S.view = location.hash.slice(1)||'inicio'; render(); window.scrollTo(0,0); });
@@ -525,6 +525,35 @@ function vContactos(){
   ${L.length ? `<div class="card"><div class="list">${L.map(x=>`<div class="click" data-econ="${esc(x.id)}"><div class="grow"><b>${esc(x.cliente)}</b>${x.sede?` <span class="muted">· ${esc(x.sede)}</span>`:''}
       <div class="small muted">${esc([x.nombre,x.telefono,x.email].filter(Boolean).join(' · '))}</div></div>${x.avisos==='no'?'<span class="tag">sin avisos</span>':''}</div>`).join('')}</div></div>`
     : '<div class="card flat empty">Todavía no hay contactos cargados.</div>'}`;
+}
+// Clientes con sus sedes, y los sectores de algunas sedes (el bot lo usa para no confundir sede con sector)
+const fichasCli = () => Object.entries(S.clientes).map(([id,x])=>({id,...x})).sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre)));
+const textoSedes = x => (x.sedes||[]).map(s=>s.nombre+((s.sectores||[]).length?': '+s.sectores.join(', '):'')).join('\n');
+function vClientes(){
+  const L = fichasCli(), q = norm(S.f.qcli||'');
+  const X = L.filter(x=>!q || norm(x.nombre+' '+textoSedes(x)).includes(q));
+  return `<div class="row"><div class="grow"><h1>Clientes, sedes y sectores</h1></div><button class="btn pri" data-ncli>+ Cliente</button></div>
+  <p class="sub">Cada cliente con sus sedes, y los sectores de las sedes que tienen. Si no tiene sedes, es sede única. El bot usa esta lista para no confundir sedes con sectores. <a href="#contactos">Contactos de clientes</a></p>
+  ${L.length>8?`<input class="card" id="qcli" placeholder="Buscar cliente o sede" value="${esc(S.f.qcli||'')}" style="width:100%;padding:10px 12px;margin-bottom:10px">`:''}
+  ${X.length ? X.map(x=>`<div class="card click" data-ecli="${esc(x.id)}"><div class="cli">${esc(x.nombre)}</div>
+    ${(x.sedes||[]).length ? `<div class="list" style="margin-top:6px">${x.sedes.map(s=>`<div><div class="grow"><b>${esc(s.nombre)}</b>${(s.sectores||[]).length?`<div class="small muted">Sectores: ${s.sectores.map(esc).join(' · ')}</div>`:''}</div></div>`).join('')}</div>`
+      : '<div class="small muted" style="margin-top:4px">Sede única</div>'}${x.notas?`<div class="small muted" style="margin-top:6px">${esc(x.notas)}</div>`:''}</div>`).join('')
+    : '<div class="card flat empty">Todavía no hay clientes cargados.<br><span class="small">Cargalos con "+ Cliente".</span></div>'}`;
+}
+function formCliente(id){
+  const x = id ? S.clientes[id] : {};
+  hoja(`<div class="hd"><h2>${id?esc(x.nombre):'Nuevo cliente'}</h2><button class="ibtn" data-cerrar aria-label="Cerrar">×</button></div>
+  <form class="f" id="fcli">
+    <label>Cliente<input name="nombre" list="dlcli" required autocomplete="off" value="${esc(x.nombre||'')}"></label>${dlClientes()}
+    <label>Sedes <span style="font-weight:500">(una por renglón; si tiene sectores, después de dos puntos separados por coma. Vacío = sede única)</span>
+      <textarea name="sedes" rows="7" placeholder="San Isidro&#10;Vicente López 1: Hematología, Química&#10;Pilar">${esc(textoSedes(x))}</textarea></label>
+    <label>Notas<input name="notas" value="${esc(x.notas||'')}"></label>
+    <div class="row"><button class="btn pri" style="flex:1;justify-content:center">Guardar</button>${id?'<button type="button" class="btn" id="borcli">Borrar</button>':''}</div></form>`);
+  $('#fcli').onsubmit = async e => { e.preventDefault(); const d = Object.fromEntries(new FormData(e.target).entries());
+    const sedes = d.sedes.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{ const [n,...r]=l.split(':'); const sec=r.join(':').split(',').map(s=>s.trim()).filter(Boolean);
+      return sec.length ? {nombre:n.trim(), sectores:sec} : {nombre:n.trim()}; });
+    if(await docSet('clientes', id||'k'+Date.now(), sinVacios({nombre:d.nombre.trim(), sedes:sedes.length?sedes:null, notas:d.notas.trim()}))){ cerrar(); toast('Guardado'); render(); } };
+  if(id) $('#borcli').onclick = async () => { if(confirm('¿Borrar este cliente de la lista? (no borra sus equipos ni su historial)')){ await docDel('clientes', id); cerrar(); render(); } };
 }
 function formContacto(id){
   const x = id ? S.contactos[id] : {};
@@ -902,6 +931,7 @@ function menu(){
   hoja(`<div class="hd"><h2>Más</h2><button class="ibtn" data-cerrar aria-label="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div class="menu">
     <button id="mbus">Buscar equipo</button>
     <button id="mtrab">Agregar equipo o trabajo hecho en el lugar</button>
+        <a href="#clientes" data-cerrar>Clientes, sedes y sectores</a>
         <a href="#contactos" data-cerrar>Contactos de clientes</a>
     <a href="#internos" data-cerrar>Equipos internos (patrones)</a>
     <a href="#compras" data-cerrar>Lista de compras</a>
@@ -943,6 +973,9 @@ function bind(){
   $$('[data-nint]').forEach(el=>el.onclick = () => formInterno(null));
   $$('[data-eint]').forEach(el=>el.onclick = () => formInterno(el.dataset.eint));
   $$('[data-ncon]').forEach(el=>el.onclick = () => formContacto(null));
+  $$('[data-ncli]').forEach(el=>el.onclick = () => formCliente(null));
+  $$('[data-ecli]').forEach(el=>el.onclick = () => formCliente(el.dataset.ecli));
+  { const qc=$('#qcli'); if(qc) qc.oninput = () => { S.f.qcli = qc.value; const p = qc.selectionStart; render(); const n=$('#qcli'); n.focus(); n.setSelectionRange(p,p); }; }
   $$('[data-econ]').forEach(el=>el.onclick = () => formContacto(el.dataset.econ));
   $$('[data-ingsol]').forEach(el=>el.onclick = async () => { if(await ingresarSolicitud(+el.dataset.ingsol)){ toast('Pasó al taller'); render(); } });
   $$('[data-retsol]').forEach(el=>el.onclick = () => { const s=S.sol.find(x=>x.id===+el.dataset.retsol);
