@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.30';
+const VERSION = 'v7.31';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -304,10 +304,10 @@ const agrupar = (L, fk) => { const m=new Map(); L.forEach(x=>{ const k=fk(x); m.
 // Recorridos (visitas): qué llevar, qué retirar y qué trabajo hacer en cada lugar
 const visitas = () => Object.entries(S.vis).map(([id,v])=>({id,...v})).filter(v=>v.fecha);
 // Viajes que se repiten (cronograma de Lucho): cada semana, cada 15 días o cada mes. Cada vez se marca hecha por separado.
-const REPETIR = {'':'No se repite','7':'Todas las semanas','14':'Cada 15 días','mes':'Todos los meses'};
+const REPETIR = {'':'No se repite','7':'Todas las semanas','14':'Cada 15 días','mes':'Todos los meses','año':'Todos los años'};
 function repeticiones(v){ const out=[], hasta=sumarDias(HOY,60), desde=sumarDias(HOY,-7), hechas=v.hechas||[]; let f=v.fecha, n=0;
   while(f<=hasta && n<300){ if(f>=desde && !hechas.includes(f)) out.push({...v, id:v.id+'@'+f, base:v.id, fecha:f});
-    n++; if(v.repetir==='mes'){ const d=new Date(v.fecha+'T12:00'); d.setMonth(d.getMonth()+n); f=isoD(d); } else f=sumarDias(v.fecha,(+v.repetir)*n); }
+    n++; if(v.repetir==='mes'||v.repetir==='año'){ const d=new Date(v.fecha+'T12:00'); d.setMonth(d.getMonth()+(v.repetir==='año'?12:1)*n); f=isoD(d); } else f=sumarDias(v.fecha,(+v.repetir)*n); }
   return out; }
 const proximas = () => memo('prox', () => visitas().flatMap(v=>v.repetir ? repeticiones(v) : (!v.hecho && v.fecha>=sumarDias(HOY,-7) ? [v] : [])).sort((a,b)=>a.fecha.localeCompare(b.fecha)||String(a.hora||'').localeCompare(String(b.hora||''))));
 const llevarA = v => listos().filter(t=>mismoCli(t.cliente,v.cliente));
