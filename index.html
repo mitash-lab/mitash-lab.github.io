@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.25';
+const VERSION = 'v7.26';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -812,7 +812,8 @@ function vLugar(){
   <p class="sub">Arreglos, cambios de repuesto y validaciones de cabinas que se hacen en el cliente (no están en el taller). Si falta un repuesto, queda también en Compras; cuando se compra, el trabajo sigue acá hasta que se haga.</p>
   ${TL.length ? TL.map(tarjetaTL).join('') : '<div class="card flat empty">No hay trabajos pendientes en clientes.</div>'}
   ${cab.length?`<div class="sec-t">Cabinas a validar (próximos 3 meses) <span class="n">· ${cab.length}</span></div><div class="card"><div class="list">${cab.map(e=>`<div class="click" data-eq="${esc(e.clave)}"><div class="grow"><b>${esc(e.cliente)}</b>${e.sector?` <span class="muted">· ${esc(e.sector)}</span>`:''}<div class="small muted">${esc(e.tipo)} <span class="mono">${esc(e.id_equipo)}</span> · última ${fmtA(e.ultima)}</div></div><span class="tag ${e.proxima<HOY?'bad':e.proxima.slice(0,7)===MES?'warn':'ok'}">${fmtA(e.proxima)}</span></div>`).join('')}</div></div>`:''}
-  ${hechos.length?`<details class="card flat"><summary class="click"><b>Hechos</b> <span class="muted">· últimos ${hechos.length}</span></summary><div class="list" style="margin-top:8px">${hechos.map(x=>`<div><div class="grow"><b>${esc(x.cliente)}</b> <span class="small muted">${fmtA(x.hecho)}</span><div class="small muted">${lineaTL(x)}</div></div></div>`).join('')}</div></details>`:''}
+  ${hechos.length?`<div class="sec-t">Trabajos hechos <span class="n">· últimos ${hechos.length}</span></div><div class="card"><div class="list">${hechos.map(x=>`<div><div class="grow"><b>${esc(x.cliente)}</b>${x.sede?` <span class="muted">· ${esc(x.sede)}</span>`:''}<div class="small muted">${lineaTL(x)}</div></div>
+    <span class="tag ok">hecho ${fmtA(x.hecho)}</span>${+x.frecuencia?`<span class="tag">próximo ${fmtA(masMeses(x.hecho, +x.frecuencia - (+x.avisar_antes||0)))}</span>`:''}</div>`).join('')}</div></div>`:''}
   <p class="small muted">Para cargar un trabajo que ya se hizo y no estaba anotado: <button class="btn sm" data-ntrab>Equipo o trabajo hecho</button></p>`;
 }
 function formTrabajoLugar(id){
@@ -854,7 +855,10 @@ async function trabajoLugarHecho(id){
   const eid = prev ? prev[0] : 'e'+Date.now(), y = prev ? prev[1] : {};
   const dato = sinVacios({...y, cliente:x.cliente, sede:x.sede||y.sede, tipo:x.tipo_equipo, id_equipo:idEq||y.id_equipo, serie:x.serie||y.serie, marca:x.marca||y.marca, direccion:x.direccion||y.direccion, avisar_antes:+x.avisar_antes||+y.avisar_antes||0, frecuencia:+x.frecuencia||+y.frecuencia||0, ultima:fecha, ultimo_trabajo:x.trabajo, clase:x.clase,
     historial:[...(y.historial||[]), {fecha, trabajo:x.trabajo, clase:x.clase, por:S.email||''}]});
-  if(await docSet('equipos_cli', eid, dato) && await docSet('trabajos_lugar', id, {...x, hecho:fecha})){ sumarEquiposCli(); toast('Hecho: quedó en el historial del equipo'); render(); }
+  if(await docSet('equipos_cli', eid, dato) && await docSet('trabajos_lugar', id, {...x, hecho:fecha})){
+    const v = trabajosDe({cliente:x.cliente, sede:x.sede}).length ? null : proximas().filter(v=>v.fecha<=HOY && mismoCli(v.cliente,x.cliente) && mismaSede(v.sede,x.sede)).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
+    if(v){ const base=v.base||v.id, y=S.vis[base]; await visSet(base, v.base ? {...y, hechas:[...(y.hechas||[]), v.fecha]} : {...y, hecho:true, resumen:y.resumen||x.trabajo}); }
+    sumarEquiposCli(); S.r++; toast('Trabajo hecho: quedó en el historial del equipo'+(v?' y el viaje como hecho':'')); render(); }
 }
 function formTrabajo(docId){
   const x = docId ? S.equipos_cli[docId] : {};
