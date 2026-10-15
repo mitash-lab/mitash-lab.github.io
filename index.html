@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.28';
+const VERSION = 'v7.29';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -530,38 +530,53 @@ function vContactos(){
 const fichasCli = () => Object.entries(S.clientes).map(([id,x])=>({id,...x})).sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre)));
 const textoSedes = x => (x.sedes||[]).map(s=>s.nombre+((s.sectores||[]).length?': '+s.sectores.join(', '):'')).join('\n');
 function vClientes(){
-  // una sola hoja: cada cliente con sus sedes, sectores y contactos (los contactos sin ficha también aparecen)
+  // una sola hoja: cada cliente con sus sedes, sectores y contactos, compacto; se toca y se edita todo junto
   const F = fichasCli(), C = contactos(), q = norm(S.f.qcli||'');
   const sueltos = [...new Set(C.filter(c=>!F.some(x=>mismoCli(x.nombre,c.cliente))).map(c=>c.cliente))].map(n=>({nombre:n}));
   const L = [...F, ...sueltos].sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre)));
-  const contactosDe = x => C.filter(c=>mismoCli(c.cliente,x.nombre));
-  const X = L.filter(x=>!q || norm(x.nombre+' '+textoSedes(x)+' '+contactosDe(x).map(c=>[c.nombre,c.sede].join(' ')).join(' ')).includes(q));
+  const X = L.filter(x=>!q || norm(x.nombre+' '+textoSedes(x)+' '+contactosCli(x.nombre).map(c=>[c.nombre,c.sede,c.nota].join(' ')).join(' ')).includes(q));
   return `<div class="row"><div class="grow"><h1>Clientes</h1></div><button class="btn pri" data-ncli>+ Cliente</button></div>
-  <p class="sub">Cada cliente con sus sedes, los sectores de las sedes que tienen y sus contactos. Si no tiene sedes, es sede única. El bot usa esta lista para no confundir sedes con sectores.</p>
-  ${L.length>8?`<input class="card" id="qcli" placeholder="Buscar cliente, sede o contacto" value="${esc(S.f.qcli||'')}" style="width:100%;padding:10px 12px;margin-bottom:10px">`:''}
-  ${X.length ? X.map(x=>{ const cs = contactosDe(x);
-    return `<div class="card"><div class="row"><div class="grow cli">${esc(x.nombre)}</div>${x.id?`<button class="btn sm" data-ecli="${esc(x.id)}">Editar</button>`:`<button class="btn sm" data-ncli-nom="${esc(x.nombre)}">Cargar sedes</button>`}</div>
-    ${!x.id ? '<div class="small muted" style="margin-top:4px">Sedes sin cargar</div>' : (x.sedes||[]).length ? `<div class="list" style="margin-top:6px">${x.sedes.map(s=>`<div><div class="grow"><b>${esc(s.nombre)}</b>${(s.sectores||[]).length?`<div class="small muted">Sectores: ${s.sectores.map(esc).join(' · ')}</div>`:''}</div></div>`).join('')}</div>`
-      : '<div class="small muted" style="margin-top:4px">Sede única</div>'}${x.notas?`<div class="small muted" style="margin-top:6px">${esc(x.notas)}</div>`:''}
-    <div class="small muted" style="margin:10px 0 2px;font-weight:600">Contactos</div>
-    ${cs.length ? `<div class="list">${cs.map(c=>`<div class="click" data-econ="${esc(c.id)}"><div class="grow">${esc(c.nombre||'Sin nombre')}${c.sede?` <span class="muted">· ${esc(c.sede)}</span>`:''}
-      <div class="small muted">${esc([c.telefono,c.email].filter(Boolean).join(' · '))}</div></div>${c.avisos==='no'?'<span class="tag">sin avisos</span>':''}</div>`).join('')}</div>` : '<div class="small muted">Sin contactos.</div>'}
-    <button class="btn sm" style="margin-top:8px" data-ncon-cli="${esc(x.nombre)}">+ Contacto</button></div>`; }).join('')
+  <p class="sub">Sedes, sectores y contactos de cada cliente. Tocá un cliente para editarlo.</p>
+  ${L.length>6?`<input class="card" id="qcli" placeholder="Buscar cliente, sede o contacto" value="${esc(S.f.qcli||'')}" style="width:100%;padding:10px 12px;margin-bottom:10px">`:''}
+  ${X.length ? `<div class="card"><div class="list">${X.map(x=>{ const cs = contactosCli(x.nombre);
+    return `<div class="click" ${x.id?`data-ecli="${esc(x.id)}"`:`data-ncli-nom="${esc(x.nombre)}"`} style="display:block"><b>${esc(x.nombre)}</b>
+      <div class="small muted">${!x.id ? 'Sedes sin cargar' : (x.sedes||[]).length ? x.sedes.map(s=>esc(s.nombre)+((s.sectores||[]).length?` <span style="opacity:.8">(${s.sectores.map(esc).join(', ')})</span>`:'')).join(' · ') : 'Sede única'}</div>
+      ${cs.map(c=>`<div class="small">${esc(c.nombre||'')}${c.sede?` <span class="muted">${c.nombre?'· ':''}${esc(c.sede)}</span>`:''} <span class="mono">${esc(c.telefono||'')}</span>${c.email?` <span class="muted">${esc(c.email)}</span>`:''}${c.nota?` <span class="muted">— ${esc(c.nota)}</span>`:''}</div>`).join('')}</div>`; }).join('')}</div></div>`
     : '<div class="card flat empty">Todavía no hay clientes cargados.<br><span class="small">Cargalos con "+ Cliente".</span></div>'}`;
 }
+const contactosCli = n => contactos().filter(c=>mismoCli(c.cliente,n));
+function filaContacto(c={}){ return `<div class="ccto card flat" data-cid="${esc(c.id||'')}" style="padding:10px;margin:0 0 8px">
+  <div class="two"><input name="c_nombre" placeholder="Nombre" value="${esc(c.nombre||'')}"><input name="c_sede" placeholder="Sede (si aplica)" list="dlsedes" value="${esc(c.sede||'')}"></div>
+  <div class="two" style="margin-top:6px"><input name="c_tel" inputmode="tel" placeholder="Teléfono / WhatsApp" value="${esc(c.telefono||'')}"><input name="c_mail" type="email" placeholder="Email" value="${esc(c.email||'')}"></div>
+  <div class="row" style="margin-top:6px"><input name="c_nota" class="grow" placeholder="Aclaración: celular personal, teléfono del lugar…" value="${esc(c.nota||'')}">
+    <label class="small" style="display:flex;gap:4px;align-items:center;white-space:nowrap"><input type="checkbox" name="c_avisos" ${c.avisos==='no'?'':'checked'}> avisos</label>
+    <button type="button" class="btn sm ghost" data-quitar>Quitar</button></div></div>`; }
 function formCliente(id, nombre){
-  const x = id ? S.clientes[id] : {nombre:nombre||''};
-  hoja(`<div class="hd"><h2>${id?esc(x.nombre):'Nuevo cliente'}</h2><button class="ibtn" data-cerrar aria-label="Cerrar">×</button></div>
+  const x = id ? S.clientes[id] : {nombre:nombre||''}, cs = contactosCli(x.nombre||'\u0001');
+  hoja(`<div class="hd"><h2>${id?esc(x.nombre):'Cliente'}</h2><button class="ibtn" data-cerrar aria-label="Cerrar">×</button></div>
   <form class="f" id="fcli">
     <label>Cliente<input name="nombre" list="dlcli" required autocomplete="off" value="${esc(x.nombre||'')}"></label>${dlClientes()}
-    <label>Sedes <span style="font-weight:500">(una por renglón; si tiene sectores, después de dos puntos separados por coma. Vacío = sede única)</span>
-      <textarea name="sedes" rows="7" placeholder="San Isidro&#10;Vicente López 1: Hematología, Química&#10;Pilar">${esc(textoSedes(x))}</textarea></label>
-    <label>Notas<input name="notas" value="${esc(x.notas||'')}"></label>
+    <label>Sedes <span style="font-weight:500">(una por renglón; sectores después de dos puntos, separados por coma. Vacío = sede única)</span>
+      <textarea name="sedes" rows="4" placeholder="San Isidro&#10;Vicente López 1: Hematología, Química">${esc(textoSedes(x))}</textarea></label>
+    <datalist id="dlsedes">${(x.sedes||[]).map(s=>`<option value="${esc(s.nombre)}">`).join('')}</datalist>
+    <div><b class="small">Contactos</b><div id="lcon" style="margin-top:6px">${cs.map(filaContacto).join('')}</div>
+      <button type="button" class="btn sm" id="addcon">+ Agregar contacto</button></div>
+    <label>Notas del cliente<input name="notas" value="${esc(x.notas||'')}"></label>
     <div class="row"><button class="btn pri" style="flex:1;justify-content:center">Guardar</button>${id?'<button type="button" class="btn" id="borcli">Borrar</button>':''}</div></form>`);
-  $('#fcli').onsubmit = async e => { e.preventDefault(); const d = Object.fromEntries(new FormData(e.target).entries());
+  const quitar = () => $$('#lcon [data-quitar]').forEach(b=>b.onclick = () => b.closest('.ccto').remove());
+  $('#addcon').onclick = () => { $('#lcon').insertAdjacentHTML('beforeend', filaContacto()); quitar(); }; quitar();
+  if(!cs.length) $('#addcon').click();
+  $('#fcli').onsubmit = async e => { e.preventDefault(); const d = Object.fromEntries(new FormData(e.target).entries()), nom = d.nombre.trim();
     const sedes = d.sedes.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{ const [n,...r]=l.split(':'); const sec=r.join(':').split(',').map(s=>s.trim()).filter(Boolean);
       return sec.length ? {nombre:n.trim(), sectores:sec} : {nombre:n.trim()}; });
-    if(await docSet('clientes', id||'k'+Date.now(), sinVacios({nombre:d.nombre.trim(), sedes:sedes.length?sedes:null, notas:d.notas.trim()}))){ cerrar(); toast('Guardado'); render(); } };
+    if(!await docSet('clientes', id||'k'+Date.now(), sinVacios({nombre:nom, sedes:sedes.length?sedes:null, notas:d.notas.trim()}))) return;
+    const filas = $$('#lcon .ccto'), quedan = new Set();
+    for(const [i,f] of filas.entries()){ const v = n => f.querySelector(`[name=${n}]`).value.trim();
+      if(!v('c_nombre') && !v('c_tel') && !v('c_mail')) continue;
+      const cid = f.dataset.cid || 'c'+Date.now()+i; quedan.add(cid);
+      await docSet('contactos', cid, sinVacios({...(S.contactos[cid]||{}), cliente:nom, nombre:v('c_nombre'), sede:v('c_sede'), telefono:v('c_tel'), email:v('c_mail'), nota:v('c_nota'), avisos:f.querySelector('[name=c_avisos]').checked?'si':'no'})); }
+    for(const c of cs) if(!quedan.has(c.id)) await docDel('contactos', c.id);
+    cerrar(); toast('Guardado'); render(); };
   if(id) $('#borcli').onclick = async () => { if(confirm('¿Borrar este cliente de la lista? (no borra sus equipos ni su historial)')){ await docDel('clientes', id); cerrar(); render(); } };
 }
 function formContacto(id, cliente){
@@ -983,7 +998,6 @@ function bind(){
   $$('[data-ncon]').forEach(el=>el.onclick = () => formContacto(null));
   $$('[data-ncli]').forEach(el=>el.onclick = () => formCliente(null));
   $$('[data-ncli-nom]').forEach(el=>el.onclick = () => formCliente(null, el.dataset.ncliNom));
-  $$('[data-ncon-cli]').forEach(el=>el.onclick = () => formContacto(null, el.dataset.nconCli));
   $$('[data-ecli]').forEach(el=>el.onclick = () => formCliente(el.dataset.ecli));
   { const qc=$('#qcli'); if(qc) qc.oninput = () => { S.f.qcli = qc.value; const p = qc.selectionStart; render(); const n=$('#qcli'); n.focus(); n.setSelectionRange(p,p); }; }
   $$('[data-econ]').forEach(el=>el.onclick = () => formContacto(el.dataset.econ));
