@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.31';
+const VERSION = 'v7.32';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -297,7 +297,7 @@ function taller(){ return memo('tal', () => {
 const listos = () => taller().filter(t=>t.estado==='listo');
 const porHacer = () => taller().filter(t=>t.estado==='hacer');
 // lote = lo que entró junto (mismo cliente, día y tipo)
-function lotes(L){ const m=new Map(); L.forEach(t=>{ const k=[t.cliente,t.sede,t.fecha,t.cat,t.solicitud||''].join('|'); m.has(k)||m.set(k,[]); m.get(k).push(t); });
+function lotes(L){ const m=new Map(); L.forEach(t=>{ const k=[t.cliente,t.sede,sectorDe(t),t.fecha,t.cat,t.solicitud||''].join('|'); m.has(k)||m.set(k,[]); m.get(k).push(t); });
   return [...m.values()].sort((a,b)=>a[0].fecha.localeCompare(b[0].fecha)); }
 const agrupar = (L, fk) => { const m=new Map(); L.forEach(x=>{ const k=fk(x); m.has(k)||m.set(k,[]); m.get(k).push(x); }); return [...m.entries()]; };
 
@@ -379,11 +379,15 @@ function vTaller(){
       return `<div class="card"><div class="row"><div class="grow cli">${esc(c)}</div>${f.tal!=='listo' ? '' : v ? `<span class="tag acc">Viaje ${cuando(v.fecha).toLowerCase()} · ${esc(v.tecnico||'Lucho')}</span>` : `<button class="btn sm" data-nvis-cli="${esc(c)}">Agendar entrega</button>`}</div>${lotes(X).map(lote).join('')}</div>`; }).join(''); }).join('')
     : `<div class="card flat empty">${f.tal==='retirar'?'No hay nada para retirar.':f.tal==='hacer'?'No hay nada para hacer en el taller.':f.tal==='listo'?'No hay nada listo para entregar.':'Sin entregas en los últimos 2 meses.'}</div>`}`;
 }
+// Sector: campo propio o lo que dice el detalle ("Sector Autoinmunidad")
+const sectorDe = t => t.sector || ((t.detalle||'').match(/sector\s+([^.,;]+)/i)||[])[1]?.trim() || '';
 function lote(X){
   const t0 = X[0], c = t0.cat, est = t0.estado;
   const ids = X.map(t=>t.tid).join(',');
-  const desc = c==='R' ? esc(t0.tipo + (X.length===1 && t0.nombre?' '+t0.nombre:'') + (t0.detalle?' · '+t0.detalle:'')) : '';
-  return `<div class="lote"><div class="row"><div class="grow">${tagCat(c, X.length)} <span class="small muted">${t0.sede?esc(t0.sede)+' · ':''}entró ${fmt(t0.fecha)}</span>${est==='listo'&&t0.en_camino?` <span class="tag warn">en camino con ${esc(t0.en_camino)} desde ${fmt(t0.en_camino_desde)}</span>`:''}${est==='transito'?` <span class="tag warn">retirado ${fmt(t0.retirado)} · lo tiene ${esc(t0.lo_tiene)}, falta que llegue al taller</span>`:''}${est==='retirar'?(v=>v?` <span class="tag acc">viaje asignado: ${cuando(v.fecha)}${v.tecnico?' · '+esc(v.tecnico):''}</span>`:' <span class="tag bad">pendiente · sin viaje asignado</span>')(viajePara(t0.cliente, t0.sede)):''}
+  const sec = sectorDe(t0), lugar = [t0.sede, sec].filter(Boolean).join(' · ');
+  const det = (t0.detalle||'').replace(/sector\s+[^.,;]+[.,;]?\s*/i,'').trim();
+  const desc = c==='R' ? esc(t0.tipo + (X.length===1 && t0.nombre?' '+t0.nombre:'') + (det?' · '+det:'')) : (det ? esc(det) : '');
+  return `<div class="lote"><div class="row"><div class="grow">${tagCat(c, X.length)} ${lugar?`<b style="font-size:14px">${esc(lugar)}</b> `:''}<span class="small muted">· entró ${fmt(t0.fecha)}</span>${est==='listo'&&t0.en_camino?` <span class="tag warn">en camino con ${esc(t0.en_camino)} desde ${fmt(t0.en_camino_desde)}</span>`:''}${est==='transito'?` <span class="tag warn">retirado ${fmt(t0.retirado)} · lo tiene ${esc(t0.lo_tiene)}, falta que llegue al taller</span>`:''}${est==='retirar'?(v=>v?` <span class="tag acc">viaje asignado: ${cuando(v.fecha)}${v.tecnico?' · '+esc(v.tecnico):''}</span>`:' <span class="tag bad">pendiente · sin viaje asignado</span>')(viajePara(t0.cliente, t0.sede)):''}
       ${desc?`<div class="small" style="margin-top:4px">${desc}</div>`:''}</div>
     ${est==='transito'?`<button class="btn sm pri" data-acc="retirado" data-ids="${ids}">Llegó a Mitash</button>`
       : est==='retirar'?`<button class="btn sm" data-acc="lotiene" data-ids="${ids}">Retirado: lo tiene…</button><button class="btn sm pri" data-acc="retirado" data-ids="${ids}">Ya está en Mitash</button>`
