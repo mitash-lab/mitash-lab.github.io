@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.34';
+const VERSION = 'v7.35';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -623,8 +623,8 @@ function vCompras(){
   ${hechas.length?`<details class="card flat"><summary class="click"><b>Ya comprado</b></summary><div class="list" style="margin-top:8px">${hechas.map(x=>`<div><div class="grow">${esc(x.que)} <span class="small muted">${fmtA(x.comprado)}</span></div></div>`).join('')}</div></details>`:''}`;
 }
 // ---------------------------------------------------------------- pagos de calibraciones (Meli y Jorge)
-// Se cuenta cada micropipeta y termómetro de clientes cuando queda LISTO (informe o marcado listo) desde el CORTE_PAGOS
-// (lo anterior ya está pagado). Micropipetas: también los informes que suben al Drive aunque no estén en el taller.
+// Se cuenta cada micropipeta y termómetro de clientes cuando se marca LISTO o ENTREGADO en el sistema (web o bot),
+// desde el CORTE_PAGOS (lo anterior ya está pagado). Los informes del Drive no suman aparte: así nada se cuenta dos veces.
 const CORTE_PAGOS = '2026-10-15', PRECIO = {M:1500, T:3000}, PERSONAS = ['Meli','Jorge'];
 const hizoDefault = cat => cat==='T' ? ['Meli'] : ['Meli','Jorge'];
 const plata = n => '$ ' + Math.round(n).toLocaleString('es-AR');
@@ -634,11 +634,6 @@ function cobrables(){ return memo('cobr', () => {
     const f = t.listo || (t.auto && t.auto.fecha) || t.entregado || t.fecha; if(t.inf) usados.add(t.inf);
     if(f < CORTE_PAGOS) return;
     L.push({k:'tal:'+t.tid, cat:t.cat, cliente:t.cliente, sede:t.sede||'', id:t.nombre||'', inf:t.inf||'', fecha:f}); });
-  // micros marcadas listas a mano (sin informe todavía): si después aparece su informe, no se cuenta dos veces
-  const sinInf = L.filter(x=>x.cat==='M' && !x.inf);
-  S.servicios.filter(s=>s.tipo==='Micropipeta' && s.cliente!=='MITASH' && s.fecha>=CORTE_PAGOS && !usados.has(s.informe))
-    .filter(s=>{ const i = sinInf.findIndex(x=>mismoCli(x.cliente,s.cliente)); if(i<0) return true; sinInf[i].inf = s.informe; sinInf.splice(i,1); return false; })
-    .forEach(s=>L.push({k:'inf:'+s.informe, cat:'M', cliente:s.cliente, sede:s.sector||'', id:s.id_equipo||'', inf:s.informe, fecha:s.fecha}));
   L.forEach(x=>{ const c = S.cobros[x.k]||{}; x.hizo = c.hizo || hizoDefault(x.cat); x.pago = c.pago || {}; x.monto = PRECIO[x.cat]; });
   return L.sort((a,b)=>b.fecha.localeCompare(a.fecha)); }); }
 const parte = (x,p) => x.hizo.includes(p) ? x.monto : 0;   // a cada uno le corresponde el monto completo por equipo
@@ -648,7 +643,7 @@ function vPagos(){
   const tot = p => L.filter(x=>pendiente(x,p)).reduce((n,x)=>n+parte(x,p),0);
   const X = L.filter(x => ver==='pend' ? PERSONAS.some(p=>pendiente(x,p)) : ver==='pag' ? x.hizo.every(p=>x.pago[p]) : true);
   const grupos = agrupar(X, x=>x.cliente+'¦'+x.sede+'¦'+x.fecha+'¦'+x.cat);
-  return `<h1>Pagos</h1><p class="sub">Calibraciones de micropipetas (${plata(PRECIO.M)}) y termómetros (${plata(PRECIO.T)}) que quedaron listas desde el ${fmtA(CORTE_PAGOS)}. Lo anterior ya está pagado.</p>
+  return `<h1>Pagos</h1><p class="sub">Micropipetas (${plata(PRECIO.M)}) y termómetros (${plata(PRECIO.T)}) marcados como listos o entregados desde el ${fmtA(CORTE_PAGOS)}, a cada uno. Lo anterior ya está pagado.</p>
   <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:12px 0 16px">
     ${PERSONAS.map(p=>`<div class="stat acc"><div class="k">A pagar a ${p}</div><div class="v">${plata(tot(p))}</div>${tot(p)?`<button class="btn sm" style="margin-top:8px" data-pagar="${p}">Marcar pagado</button>`:''}</div>`).join('')}
     <div class="stat"><div class="k">Total pendiente</div><div class="v">${plata(PERSONAS.reduce((n,p)=>n+tot(p),0))}</div></div></div>
@@ -660,7 +655,20 @@ function vPagos(){
       <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px">${PERSONAS.map(p=>{ const en = G.some(y=>y.hizo.includes(p)), pago = G.every(y=>!y.hizo.includes(p)||y.pago[p]);
         return `<button class="btn sm ${!en?'ghost':pago?'ok':''}" data-cob="${esc(G.map(y=>y.k).join(','))}" data-p="${p}" title="Tocá para cambiar">${p}: ${!en?'no participó':pago?'pagado':'pendiente'}</button>`; }).join('')}</div></div>`; }).join('')}</div></div>`
     : `<div class="card flat empty">${ver==='pend'?'No hay nada pendiente de pago.':'Nada para mostrar.'}</div>`}
+  ${vAnio()}
   <p class="small muted">Tocá el nombre en cada fila: pendiente → pagado → no participó → pendiente. Termómetros cuentan por defecto para Meli; micropipetas para Meli y Jorge. A cada uno le corresponde el monto completo por equipo.</p>`;
+}
+// Calibraciones del año por cliente: informes del Drive + equipos listos/entregados en el sistema que no tienen informe
+function vAnio(){
+  const A = HOY.slice(0,4), cnt = {};
+  const suma = (cli, cat) => { const c = (clientes().find(x=>mismoCli(x,cli))||cli); (cnt[c] ||= {M:0,T:0})[cat]++; };
+  S.servicios.filter(s=>s.fecha.startsWith(A) && s.cliente && s.cliente!=='MITASH').forEach(s=>suma(s.cliente, s.tipo==='Micropipeta'?'M':'T'));
+  taller().filter(t=>(t.cat==='M'||t.cat==='T') && !t.inf && (t.estado==='listo'||t.estado==='entregado') && (t.listo||t.entregado||t.fecha).startsWith(A) && t.cliente!=='MITASH').forEach(t=>suma(t.cliente, t.cat));
+  const L = Object.entries(cnt).sort((a,b)=>(b[1].M+b[1].T)-(a[1].M+a[1].T)), tM = L.reduce((n,[,x])=>n+x.M,0), tT = L.reduce((n,[,x])=>n+x.T,0);
+  if(!L.length) return '';
+  return `<details class="card flat" style="margin-top:16px" ${S.f.anio?'open':''} id="detanio"><summary class="click"><b>Calibraciones ${A} por cliente</b> <span class="muted">· ${tM} micropipetas · ${tT} termómetros</span></summary>
+    <div class="list" style="margin-top:8px">${L.map(([c,x])=>`<div><div class="grow">${esc(c)}</div><span class="small" style="min-width:90px;text-align:right">${x.M?x.M+' micros':''}</span><span class="small" style="min-width:90px;text-align:right">${x.T?x.T+' term.':''}</span></div>`).join('')}</div>
+    <p class="small muted" style="margin-top:8px">Cuenta los informes del Drive y lo marcado como listo o entregado en el sistema.</p></details>`;
 }
 async function ciclarCobro(keys, p){
   const L = cobrables().filter(x=>keys.includes(x.k)); if(!L.length) return;
@@ -1051,6 +1059,7 @@ function bind(){
   $$('[data-aviso]').forEach(el=>el.onclick = () => avisar(el.dataset.aviso));
   $$('[data-seg]').forEach(el=>el.onclick = () => marcarSeg(el.dataset.seg, el.dataset.est));
   seg('#segpag','pag');
+  { const da=$('#detanio'); if(da) da.ontoggle = () => { S.f.anio = da.open; }; }
   $$('[data-cob]').forEach(el=>el.onclick = () => ciclarCobro(el.dataset.cob.split(','), el.dataset.p));
   $$('[data-pagar]').forEach(el=>el.onclick = () => pagarTodo(el.dataset.pagar));
   $$('[data-ntl]').forEach(el=>el.onclick = () => formTrabajoLugar(null));
