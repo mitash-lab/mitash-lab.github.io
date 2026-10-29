@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.32';
+const VERSION = 'v7.33';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -180,7 +180,7 @@ const PERFILES = { 'de_antoni@hotmail.com':'Claudio' };   // email -> nombre (su
 const PUBLIC_FORM = 'https://mitash-lab.github.io/solicitud.html';
 const linkForm = (cliente, sede) => PUBLIC_FORM + (cliente ? '?' + new URLSearchParams(Object.entries({cliente, sede}).filter(([,v]) => v)).toString() : '');
 
-const S = { view:(location.hash||'#taller').slice(1), equipos:[], servicios:[], tallerDb:[], sol:[], vis:{}, contactos:{}, clientes:{}, internos:{}, equipos_cli:{}, compras:{}, trabajos_lugar:{}, seguimiento:{}, prestamos:{}, r:0,
+const S = { view:(location.hash||'#taller').slice(1), equipos:[], servicios:[], tallerDb:[], sol:[], vis:{}, contactos:{}, clientes:{}, internos:{}, equipos_cli:{}, compras:{}, trabajos_lugar:{}, seguimiento:{}, prestamos:{}, cobros:{}, r:0,
   f:{ tal:'hacer', cat:'', ven:MES, ped:'abiertos' } };
 
 // ---------------------------------------------------------------- datos (Supabase)
@@ -248,7 +248,7 @@ async function cargarTodo(){
                            : await Promise.all([cargarTabla('informes'), cargarTabla('termometros')]);
   armarBase(inf, ter);
   if(LOCAL){ demo(); S.solOk=true; sumarEquiposCli(); return; }
-  await Promise.all([cargarTaller(),cargarSol(),cargarVis(),cargarCol('contactos'),cargarCol('clientes'),cargarCol('internos'),cargarCol('equipos_cli'),cargarCol('compras'),cargarCol('trabajos_lugar'),cargarCol('seguimiento'),cargarCol('prestamos')]);
+  await Promise.all([cargarTaller(),cargarSol(),cargarVis(),cargarCol('contactos'),cargarCol('clientes'),cargarCol('internos'),cargarCol('equipos_cli'),cargarCol('compras'),cargarCol('trabajos_lugar'),cargarCol('seguimiento'),cargarCol('prestamos'),cargarCol('cobros')]);
   sumarEquiposCli();
 }
 // Colecciones simples en "docs": contactos de clientes y equipos internos de Mitash (patrones, termómetros de referencia...)
@@ -329,14 +329,14 @@ function yo(){ return PERFILES[(S.email||'').toLowerCase()] || ''; }
 // ---------------------------------------------------------------- vistas
 // Simple: 3 pestañas. El taller es la pantalla principal.
 // [ruta, ícono, nombre, nombre corto para el celular]
-const TABS = [['taller','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18"/></svg>','Taller'],['recorridos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h11v10H3zM14 9h4l3 3v4h-7"/><circle cx="7" cy="17.5" r="1.5"/><circle cx="17" cy="17.5" r="1.5"/></svg>','Viajes'],['vencimientos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>','Vencimientos','Vencim.'],['lugar','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>','En el lugar','Lugar'],['compras','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11h11L21 7H6.2"/><circle cx="9" cy="19.5" r="1.3"/><circle cx="17" cy="19.5" r="1.3"/></svg>','Compras'],['internos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 13l3.5-3.5M12 5V3M8 3h8"/></svg>','Internos'],['pedidos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4z"/></svg>','Pedidos']];
+const TABS = [['taller','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18"/></svg>','Taller'],['recorridos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h11v10H3zM14 9h4l3 3v4h-7"/><circle cx="7" cy="17.5" r="1.5"/><circle cx="17" cy="17.5" r="1.5"/></svg>','Viajes'],['vencimientos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>','Vencimientos','Vencim.'],['lugar','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>','En el lugar','Lugar'],['compras','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11h11L21 7H6.2"/><circle cx="9" cy="19.5" r="1.3"/><circle cx="17" cy="19.5" r="1.3"/></svg>','Compras'],['internos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 13l3.5-3.5M12 5V3M8 3h8"/></svg>','Internos'],['pagos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/></svg>','Pagos'],['pedidos','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4z"/></svg>','Pedidos']];
 function render(){
   S.r++;
   const nPed = S.sol.filter(s=>s.estado==='nueva').length;
   const vista = S.view.split('/')[0]==='inicio' ? 'taller' : S.view.split('/')[0];
   $('#tabs').innerHTML = TABS.filter(([v])=>v!=='pedidos' || S.solOk).map(([v,i,t,c])=>{ const n = v==='pedidos' ? nPed : v==='lugar' ? trabajosLugar().length : v==='compras' ? Object.values(S.compras).filter(x=>!x.comprado).length : v==='internos' ? internosAvisar().length : 0;
     return `<a href="#${v}" class="${vista===v?'on':''}"><span class="i">${i}</span>${c?`<span class="lg">${t}</span><span class="cort">${c}</span>`:t}${n?`<span class="dot ${v==='pedidos'?'':'gris'}">${n}</span>`:''}</a>`; }).join('');
-  const V = {taller:vTaller, recorridos:vRecorridos, contactos:vClientes, clientes:vClientes, compras:vCompras, lugar:vLugar, cliente:vCliente, internos:vInternosPag, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
+  const V = {taller:vTaller, recorridos:vRecorridos, contactos:vClientes, clientes:vClientes, compras:vCompras, lugar:vLugar, cliente:vCliente, internos:vInternosPag, pagos:vPagos, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
   $('#main').innerHTML = V(); bind();
 }
 window.addEventListener('hashchange', () => { S.view = location.hash.slice(1)||'inicio'; render(); window.scrollTo(0,0); });
@@ -621,6 +621,62 @@ function vCompras(){
   ${pend.length ? `<div class="card"><div class="list">${pend.map(x=>`<div><div class="grow"><b>${esc((x.cantidad?x.cantidad+' ':'')+x.que)}</b><div class="small muted">para ${esc(x.para||'Taller')} · ${esc(x.pidio||'')} ${fmtA(x.fecha)}</div></div>
     <button class="btn sm" data-comprado="${esc(x.id)}">✓ Comprado</button></div>`).join('')}</div></div>` : '<div class="card flat empty">No falta comprar nada.</div>'}
   ${hechas.length?`<details class="card flat"><summary class="click"><b>Ya comprado</b></summary><div class="list" style="margin-top:8px">${hechas.map(x=>`<div><div class="grow">${esc(x.que)} <span class="small muted">${fmtA(x.comprado)}</span></div></div>`).join('')}</div></details>`:''}`;
+}
+// ---------------------------------------------------------------- pagos de calibraciones (Meli y Jorge)
+// Se cuenta cada micropipeta y termómetro de clientes cuando queda LISTO (informe o marcado listo) desde el CORTE_PAGOS
+// (lo anterior ya está pagado). Micropipetas: también los informes que suben al Drive aunque no estén en el taller.
+const CORTE_PAGOS = '2026-10-15', PRECIO = {M:1500, T:3000}, PERSONAS = ['Meli','Jorge'];
+const hizoDefault = cat => cat==='T' ? ['Meli'] : ['Meli','Jorge'];
+const plata = n => '$ ' + Math.round(n).toLocaleString('es-AR');
+function cobrables(){ return memo('cobr', () => {
+  const L = [], usados = new Set();
+  taller().filter(t=>(t.cat==='M'||t.cat==='T') && (t.estado==='listo'||t.estado==='entregado') && t.cliente!=='MITASH').forEach(t=>{
+    const f = t.listo || (t.auto && t.auto.fecha) || t.entregado || t.fecha; if(t.inf) usados.add(t.inf);
+    if(f < CORTE_PAGOS) return;
+    L.push({k:'tal:'+t.tid, cat:t.cat, cliente:t.cliente, sede:t.sede||'', id:t.nombre||'', inf:t.inf||'', fecha:f}); });
+  // micros marcadas listas a mano (sin informe todavía): si después aparece su informe, no se cuenta dos veces
+  const sinInf = L.filter(x=>x.cat==='M' && !x.inf);
+  S.servicios.filter(s=>s.tipo==='Micropipeta' && s.cliente!=='MITASH' && s.fecha>=CORTE_PAGOS && !usados.has(s.informe))
+    .filter(s=>{ const i = sinInf.findIndex(x=>mismoCli(x.cliente,s.cliente)); if(i<0) return true; sinInf[i].inf = s.informe; sinInf.splice(i,1); return false; })
+    .forEach(s=>L.push({k:'inf:'+s.informe, cat:'M', cliente:s.cliente, sede:s.sector||'', id:s.id_equipo||'', inf:s.informe, fecha:s.fecha}));
+  L.forEach(x=>{ const c = S.cobros[x.k]||{}; x.hizo = c.hizo || hizoDefault(x.cat); x.pago = c.pago || {}; x.monto = PRECIO[x.cat]; });
+  return L.sort((a,b)=>b.fecha.localeCompare(a.fecha)); }); }
+const parte = (x,p) => x.hizo.includes(p) ? x.monto / x.hizo.length : 0;
+const pendiente = (x,p) => x.hizo.includes(p) && !x.pago[p];
+function vPagos(){
+  const L = cobrables(), ver = S.f.pag || 'pend';
+  const tot = p => L.filter(x=>pendiente(x,p)).reduce((n,x)=>n+parte(x,p),0);
+  const X = L.filter(x => ver==='pend' ? PERSONAS.some(p=>pendiente(x,p)) : ver==='pag' ? x.hizo.every(p=>x.pago[p]) : true);
+  const grupos = agrupar(X, x=>x.cliente+'¦'+x.sede+'¦'+x.fecha+'¦'+x.cat);
+  return `<h1>Pagos</h1><p class="sub">Calibraciones de micropipetas (${plata(PRECIO.M)}) y termómetros (${plata(PRECIO.T)}) que quedaron listas desde el ${fmtA(CORTE_PAGOS)}. Lo anterior ya está pagado.</p>
+  <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:12px 0 16px">
+    ${PERSONAS.map(p=>`<div class="stat acc"><div class="k">A pagar a ${p}</div><div class="v">${plata(tot(p))}</div>${tot(p)?`<button class="btn sm" style="margin-top:8px" data-pagar="${p}">Marcar pagado</button>`:''}</div>`).join('')}
+    <div class="stat"><div class="k">Total pendiente</div><div class="v">${plata(PERSONAS.reduce((n,p)=>n+tot(p),0))}</div></div></div>
+  <div class="seg" id="segpag"><button data-v="pend" class="${ver==='pend'?'on':''}">Pendientes</button><button data-v="pag" class="${ver==='pag'?'on':''}">Pagados</button><button data-v="todos" class="${ver==='todos'?'on':''}">Todos</button></div>
+  ${grupos.length ? `<div class="card"><div class="list">${grupos.map(([k,G])=>{ const x=G[0];
+    return `<div style="display:block"><div class="row"><div class="grow"><b>${esc(x.cliente)}</b>${x.sede?` <span class="muted">· ${esc(x.sede)}</span>`:''}
+      <div class="small muted">${tagCat(x.cat, G.length)} listo ${fmtA(x.fecha)} · ${plata(G.length*x.monto)}</div>
+      <div class="small muted mono" style="margin-top:3px">${G.map(y=>esc(y.id||y.inf||'sin ID')).join(' · ')}</div></div></div>
+      <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px">${PERSONAS.map(p=>{ const en = G.some(y=>y.hizo.includes(p)), pago = G.every(y=>!y.hizo.includes(p)||y.pago[p]);
+        return `<button class="btn sm ${!en?'ghost':pago?'ok':''}" data-cob="${esc(G.map(y=>y.k).join(','))}" data-p="${p}" title="Tocá para cambiar">${p}: ${!en?'no participó':pago?'pagado':'pendiente'}</button>`; }).join('')}</div></div>`; }).join('')}</div></div>`
+    : `<div class="card flat empty">${ver==='pend'?'No hay nada pendiente de pago.':'Nada para mostrar.'}</div>`}
+  <p class="small muted">Tocá el nombre en cada fila: pendiente → pagado → no participó → pendiente. Termómetros cuentan por defecto para Meli; micropipetas para Meli y Jorge (mitad cada uno).</p>`;
+}
+async function ciclarCobro(keys, p){
+  const L = cobrables().filter(x=>keys.includes(x.k)); if(!L.length) return;
+  const x0 = L[0], estado = !x0.hizo.includes(p) ? 'no' : x0.pago[p] ? 'pagado' : 'pend';
+  for(const x of L){ const c = {...(S.cobros[x.k]||{}), hizo:[...x.hizo], pago:{...x.pago}};
+    if(estado==='pend'){ c.pago[p] = HOY; }
+    else if(estado==='pagado'){ delete c.pago[p]; c.hizo = c.hizo.filter(q=>q!==p); if(!c.hizo.length) c.hizo = PERSONAS.filter(q=>q!==p); }
+    else { c.hizo = [...new Set([...c.hizo, p])]; delete c.pago[p]; }
+    if(!await docSet('cobros', x.k, c)) return; }
+  S.r++; render();
+}
+async function pagarTodo(p){
+  const L = cobrables().filter(x=>pendiente(x,p)), n = L.reduce((s,x)=>s+parte(x,p),0);
+  if(!L.length || !confirm(`¿Marcar como pagado a ${p} ${plata(n)} (${L.length} calibraciones)?`)) return;
+  for(const x of L) if(!await docSet('cobros', x.k, {...(S.cobros[x.k]||{}), hizo:[...x.hizo], pago:{...x.pago, [p]:HOY}})) return;
+  S.r++; toast('Marcado como pagado'); render();
 }
 function vInternosPag(){ return `<h1>Equipos internos</h1><p class="sub">Patrones, termómetros y micropipetas de Mitash, con su próxima calibración (una vez por año desde la última).</p>${vInternos()}${vPropios()}`; }
 
@@ -994,6 +1050,9 @@ function bind(){
   $$('[data-eq]').forEach(el=>el.onclick = () => fichaEquipo(el.dataset.eq));
   $$('[data-aviso]').forEach(el=>el.onclick = () => avisar(el.dataset.aviso));
   $$('[data-seg]').forEach(el=>el.onclick = () => marcarSeg(el.dataset.seg, el.dataset.est));
+  seg('#segpag','pag');
+  $$('[data-cob]').forEach(el=>el.onclick = () => ciclarCobro(el.dataset.cob.split(','), el.dataset.p));
+  $$('[data-pagar]').forEach(el=>el.onclick = () => pagarTodo(el.dataset.pagar));
   $$('[data-ntl]').forEach(el=>el.onclick = () => formTrabajoLugar(null));
   $$('[data-etl]').forEach(el=>el.onclick = () => formTrabajoLugar(el.dataset.etl));
   $$('[data-htl]').forEach(el=>el.onclick = () => trabajoLugarHecho(el.dataset.htl));
