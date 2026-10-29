@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.33';
+const VERSION = 'v7.34';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -641,7 +641,7 @@ function cobrables(){ return memo('cobr', () => {
     .forEach(s=>L.push({k:'inf:'+s.informe, cat:'M', cliente:s.cliente, sede:s.sector||'', id:s.id_equipo||'', inf:s.informe, fecha:s.fecha}));
   L.forEach(x=>{ const c = S.cobros[x.k]||{}; x.hizo = c.hizo || hizoDefault(x.cat); x.pago = c.pago || {}; x.monto = PRECIO[x.cat]; });
   return L.sort((a,b)=>b.fecha.localeCompare(a.fecha)); }); }
-const parte = (x,p) => x.hizo.includes(p) ? x.monto / x.hizo.length : 0;
+const parte = (x,p) => x.hizo.includes(p) ? x.monto : 0;   // a cada uno le corresponde el monto completo por equipo
 const pendiente = (x,p) => x.hizo.includes(p) && !x.pago[p];
 function vPagos(){
   const L = cobrables(), ver = S.f.pag || 'pend';
@@ -655,12 +655,12 @@ function vPagos(){
   <div class="seg" id="segpag"><button data-v="pend" class="${ver==='pend'?'on':''}">Pendientes</button><button data-v="pag" class="${ver==='pag'?'on':''}">Pagados</button><button data-v="todos" class="${ver==='todos'?'on':''}">Todos</button></div>
   ${grupos.length ? `<div class="card"><div class="list">${grupos.map(([k,G])=>{ const x=G[0];
     return `<div style="display:block"><div class="row"><div class="grow"><b>${esc(x.cliente)}</b>${x.sede?` <span class="muted">· ${esc(x.sede)}</span>`:''}
-      <div class="small muted">${tagCat(x.cat, G.length)} listo ${fmtA(x.fecha)} · ${plata(G.length*x.monto)}</div>
+      <div class="small muted">${tagCat(x.cat, G.length)} listo ${fmtA(x.fecha)} · ${plata(G.length*x.monto)}${x.hizo.length>1?" a cada uno":""}</div>
       <div class="small muted mono" style="margin-top:3px">${G.map(y=>esc(y.id||y.inf||'sin ID')).join(' · ')}</div></div></div>
       <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px">${PERSONAS.map(p=>{ const en = G.some(y=>y.hizo.includes(p)), pago = G.every(y=>!y.hizo.includes(p)||y.pago[p]);
         return `<button class="btn sm ${!en?'ghost':pago?'ok':''}" data-cob="${esc(G.map(y=>y.k).join(','))}" data-p="${p}" title="Tocá para cambiar">${p}: ${!en?'no participó':pago?'pagado':'pendiente'}</button>`; }).join('')}</div></div>`; }).join('')}</div></div>`
     : `<div class="card flat empty">${ver==='pend'?'No hay nada pendiente de pago.':'Nada para mostrar.'}</div>`}
-  <p class="small muted">Tocá el nombre en cada fila: pendiente → pagado → no participó → pendiente. Termómetros cuentan por defecto para Meli; micropipetas para Meli y Jorge (mitad cada uno).</p>`;
+  <p class="small muted">Tocá el nombre en cada fila: pendiente → pagado → no participó → pendiente. Termómetros cuentan por defecto para Meli; micropipetas para Meli y Jorge. A cada uno le corresponde el monto completo por equipo.</p>`;
 }
 async function ciclarCobro(keys, p){
   const L = cobrables().filter(x=>keys.includes(x.k)); if(!L.length) return;
