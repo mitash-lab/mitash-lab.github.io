@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.37';
+const VERSION = 'v7.38';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -485,7 +485,7 @@ function vRecorridos(){
 const internos = () => Object.entries(S.internos).map(([id,x])=>{ const d=new Date((x.ultima||HOY)+'T12:00'); d.setMonth(d.getMonth()+(+x.frecuencia||12)); return {id,...x,proxima:isoD(d)}; })
   .sort((a,b)=>a.proxima.localeCompare(b.proxima));
 // Termómetros (M-1…) y micropipetas de Mitash: se calibran una vez por año desde la última calibración
-const propios = () => Object.entries(S.prestamos||{}).map(([k,x])=>({k,...x})).filter(x=>x.tipo)
+const propios = () => Object.entries(S.prestamos||{}).map(([k,x])=>({k,...x, tipo: x.tipo || (/^M-?\d/i.test(x.id||k) ? 'Termómetro' : /^P-/i.test(k) ? 'Micropipeta' : '')})).filter(x=>x.tipo)
   .sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo)) || String(a.id||a.k).localeCompare(String(b.id||b.k),undefined,{numeric:true}));
 const proxPropio = x => x.proxima_cal || (x.ultima_cal ? masMeses(x.ultima_cal,12) : '');
 const propiosAvisar = () => propios().filter(x=>!proxPropio(x) || proxPropio(x)<=sumarDias(HOY,45));
