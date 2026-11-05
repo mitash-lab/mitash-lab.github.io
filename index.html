@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.36';
+const VERSION = 'v7.37';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -336,7 +336,7 @@ function render(){
   const vista = S.view.split('/')[0]==='inicio' ? 'taller' : S.view.split('/')[0];
   $('#tabs').innerHTML = TABS.filter(([v])=>v!=='pedidos' || S.solOk).map(([v,i,t,c])=>{ const n = v==='pedidos' ? nPed : v==='lugar' ? trabajosLugar().length : v==='compras' ? Object.values(S.compras).filter(x=>!x.comprado).length : v==='internos' ? internosAvisar().length : 0;
     return `<a href="#${v}" class="${vista===v?'on':''}"><span class="i">${i}</span>${c?`<span class="lg">${t}</span><span class="cort">${c}</span>`:t}${n?`<span class="dot ${v==='pedidos'?'':'gris'}">${n}</span>`:''}</a>`; }).join('');
-  const V = {taller:vTaller, recorridos:vRecorridos, contactos:vClientes, clientes:vClientes, compras:vCompras, lugar:vLugar, cliente:vCliente, internos:vInternosPag, pagos:vPagos, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
+  const V = {taller:vTaller, recorridos:vRecorridos, contactos:vClientes, clientes:vClientes, compras:vCompras, lugar:vLugar, cliente:vCliente, internos:vInternosPag, pagos:vPagos, control:vControl, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
   $('#main').innerHTML = V(); bind();
 }
 window.addEventListener('hashchange', () => { S.view = location.hash.slice(1)||'inicio'; render(); window.scrollTo(0,0); });
@@ -701,6 +701,29 @@ async function pagarTodo(p){
   for(const x of L) if(!await docSet('cobros', x.k, {...(S.cobros[x.k]||{}), hizo:[...x.hizo], pago:{...x.pago, [p]:HOY}})) return;
   S.r++; toast('Marcado como pagado'); render();
 }
+// Control del taller: todo lo que el sistema cree que hay, para comparar con la realidad (imprimible, con casillas)
+function vControl(){
+  const T = taller().filter(t=>t.estado!=='entregado');
+  const fila = t => `<tr><td>${esc(t.cliente)}</td><td>${esc([t.sede, sectorDe(t)].filter(Boolean).join(' · '))}</td><td>${esc(t.tipo)}</td><td class="mono">${esc(t.nombre||'—')}</td><td>${fmt(t.fecha)}</td><td class="small">${esc((t.estado==='transito'?'lo tiene '+t.lo_tiene+'. ':'')+(t.en_camino?'en camino con '+t.en_camino+'. ':'')+(t.detalle||''))}</td><td class="ck">☐</td><td class="ck">☐</td></tr>`;
+  const tabla = (tit, L) => !L.length ? '' : `<h2 class="ctl">${tit} <span class="muted">· ${L.length}</span></h2>
+    <table class="ctl"><tr><th>Cliente</th><th>Sede · sector</th><th>Equipo</th><th>ID</th><th>Desde</th><th>Notas</th><th>Está</th><th>No está</th></tr>${L.sort((a,b)=>String(a.cliente).localeCompare(String(b.cliente))||a.fecha.localeCompare(b.fecha)).map(fila).join('')}</table>`;
+  const P = propios();
+  return `<style>table.ctl{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0 18px;background:#fff}table.ctl th,table.ctl td{border:1px solid var(--line);padding:6px 7px;text-align:left;vertical-align:top}table.ctl th{background:var(--soft)}table.ctl td.ck{text-align:center;width:52px;font-size:16px}h2.ctl{font-size:16px;margin:18px 0 4px}
+    @media print{header,nav.tabs,.noimp,.wa{display:none!important}body{background:#fff}#main{padding:0!important;margin:0!important;max-width:none!important}table.ctl{font-size:11px}}</style>
+  <div class="row noimp"><div class="grow"><h1>Control del taller</h1></div><button class="btn pri" onclick="print()">Imprimir</button></div>
+  <p class="sub">Todo lo que el sistema tiene como pendiente al ${fmtA(HOY)}. Marquen si está o no está; lo que no coincida se corrige desde Taller → Editar o borrar.</p>
+  ${tabla('Para retirar (en el cliente)', T.filter(t=>t.estado==='retirar'))}
+  ${tabla('Retirado, todavía no llegó al taller', T.filter(t=>t.estado==='transito'))}
+  ${tabla('En el taller · calibraciones', T.filter(t=>t.estado==='hacer' && esCalib(t)))}
+  ${tabla('En el taller · reparaciones', T.filter(t=>t.estado==='hacer' && !esCalib(t)))}
+  ${tabla('En el taller · en espera (sin prioridad)', T.filter(t=>t.estado==='espera'))}
+  ${tabla('Listo para entregar (o en camino)', T.filter(t=>t.estado==='listo'))}
+  ${trabajosLugar().length?`<h2 class="ctl">Trabajos a realizar en clientes <span class="muted">· ${trabajosLugar().length}</span></h2><table class="ctl"><tr><th>Cliente</th><th>Sede</th><th>Trabajo</th><th>Desde</th><th>¿Sigue?</th><th>Ya se hizo</th></tr>
+    ${trabajosLugar().map(x=>`<tr><td>${esc(x.cliente)}</td><td>${esc(x.sede||'')}</td><td>${lineaTL(x)}</td><td>${fmt(x.fecha)}</td><td class="ck">☐</td><td class="ck">☐</td></tr>`).join('')}</table>`:''}
+  ${P.length?`<h2 class="ctl">Termómetros y micropipetas de Mitash <span class="muted">· ${P.length}</span></h2><table class="ctl"><tr><th>Equipo</th><th>Dónde dice el sistema</th><th>Desde</th><th>Próx. calibración</th><th>Correcto</th><th>Dónde está en realidad</th></tr>
+    ${P.map(x=>`<tr><td class="mono">${esc(x.tipo==='Micropipeta'?[x.marca,x.volumen,x.id].filter(Boolean).join(' '):(x.id||x.k))}</td><td>${esc(x.estado==='Disponible'||!x.esta_en?'Mitash':x.esta_en)}</td><td>${x.desde?fmt(x.desde):''}</td><td>${proxPropio(x)?fmtA(proxPropio(x)):'falta calibrar'}</td><td class="ck">☐</td><td style="min-width:140px"></td></tr>`).join('')}</table>`:''}
+  <p class="small muted">Mitash · control impreso el ${fmtA(HOY)}</p>`;
+}
 function vInternosPag(){ return `<h1>Equipos internos</h1><p class="sub">Patrones, termómetros y micropipetas de Mitash, con su próxima calibración (una vez por año desde la última).</p>${vInternos()}${vPropios()}`; }
 
 function vVencimientos(){
@@ -1039,6 +1062,7 @@ function menu(){
     <button id="mbus">Buscar equipo</button>
     <button id="mtrab">Agregar equipo o trabajo hecho en el lugar</button>
         <a href="#clientes" data-cerrar>Clientes (sedes, sectores y contactos)</a>
+        <a href="#control" data-cerrar>Control del taller (para imprimir)</a>
     <a href="#internos" data-cerrar>Equipos internos (patrones)</a>
     <a href="#compras" data-cerrar>Lista de compras</a>
     <a href="#revisar" data-cerrar>Datos a revisar</a>
