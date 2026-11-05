@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.35';
+const VERSION = 'v7.36';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -292,7 +292,7 @@ function taller(){ return memo('tal', () => {
     asignar(t, libres(t, s=>mismoCli(s.cliente,t.cliente) && [s.id_equipo,s.serie].some(x=>x && (limpioId(x)===i || (i.length>=4 && limpioId(x).endsWith(i)))))); });
   pend.filter(t=>!t.equipo && !t.auto && !t.id_equipo).forEach(t=>asignar(t, libres(t, s=>mismoCli(s.cliente,t.cliente))));
   L.forEach(t=>{ t.inf = t.informe || (t.auto && t.auto.informe) || null; t.nombre = t.id_equipo || (t.auto && t.auto.id) || '';
-    t.estado = t.entregado ? 'entregado' : t.retirar ? (t.lo_tiene ? 'transito' : 'retirar') : (t.listo || t.inf) ? 'listo' : 'hacer'; });   // transito = ya retirado, lo tiene alguien, todavía no llegó al taller
+    t.estado = t.entregado ? 'entregado' : t.retirar ? (t.lo_tiene ? 'transito' : 'retirar') : (t.listo || t.inf) ? 'listo' : t.espera ? 'espera' : 'hacer'; });   // transito = ya retirado, lo tiene alguien, todavía no llegó al taller
   return L; }); }
 const listos = () => taller().filter(t=>t.estado==='listo');
 const porHacer = () => taller().filter(t=>t.estado==='hacer');
@@ -377,7 +377,10 @@ function vTaller(){
   ${grupos.length ? (f.tal==='hacer' ? [['Calibraciones', esCalib], ['Reparaciones en el taller', t=>!esCalib(t)]] : [['', ()=>true]]).map(([tit, fil])=>{ const G = agrupar(L.filter(fil), t=>t.cliente).sort((a,b)=>b[1].length-a[1].length);
       return !G.length ? '' : (tit?`<div class="sec-t">${tit} <span class="n">· ${L.filter(fil).length}</span></div>`:'') + G.map(([c,X])=>{ const v = f.tal==='listo' && viajePara(c, X[0].sede);
       return `<div class="card"><div class="row"><div class="grow cli">${esc(c)}</div>${f.tal!=='listo' ? '' : v ? `<span class="tag acc">Viaje ${cuando(v.fecha).toLowerCase()} · ${esc(v.tecnico||'Lucho')}</span>` : `<button class="btn sm" data-nvis-cli="${esc(c)}">Agendar entrega</button>`}</div>${lotes(X).map(lote).join('')}</div>`; }).join(''); }).join('')
-    : `<div class="card flat empty">${f.tal==='retirar'?'No hay nada para retirar.':f.tal==='hacer'?'No hay nada para hacer en el taller.':f.tal==='listo'?'No hay nada listo para entregar.':'Sin entregas en los últimos 2 meses.'}</div>`}`;
+    : `<div class="card flat empty">${f.tal==='retirar'?'No hay nada para retirar.':f.tal==='hacer'?'No hay nada para hacer en el taller.':f.tal==='listo'?'No hay nada listo para entregar.':'Sin entregas en los últimos 2 meses.'}</div>`}
+  ${f.tal==='hacer' && T.some(t=>t.estado==='espera') ? `<details class="card flat" style="margin-top:14px"><summary class="click"><b>En espera, sin prioridad</b> <span class="muted">· ${T.filter(t=>t.estado==='espera').length}</span></summary>
+    <p class="small muted" style="margin:6px 0 10px">Equipos que siguen en el taller pero no se van a hacer por ahora (faltan repuestos, autorización, etc.). No aparecen en los resúmenes.</p>
+    ${agrupar(T.filter(t=>t.estado==='espera'), t=>t.cliente).map(([c,X])=>`<div class="card"><div class="cli">${esc(c)}</div>${lotes(X).map(lote).join('')}</div>`).join('')}</details>` : ''}`;
 }
 // Sector: campo propio o lo que dice el detalle ("Sector Autoinmunidad")
 const sectorDe = t => t.sector || ((t.detalle||'').match(/sector\s+([^.,;]+)/i)||[])[1]?.trim() || '';
@@ -391,7 +394,8 @@ function lote(X){
       ${desc?`<div class="small" style="margin-top:4px">${desc}</div>`:''}</div>
     ${est==='transito'?`<button class="btn sm pri" data-acc="retirado" data-ids="${ids}">Llegó a Mitash</button>`
       : est==='retirar'?`<button class="btn sm" data-acc="lotiene" data-ids="${ids}">Retirado: lo tiene…</button><button class="btn sm pri" data-acc="retirado" data-ids="${ids}">Ya está en Mitash</button>`
-      : est==='hacer'?`<button class="btn sm" data-acc="listo" data-ids="${ids}">✓ ${X.length>1?'Todo listo':'Listo'}</button><button class="btn sm ghost" data-acc="entregado" data-ids="${ids}" title="Si ya se entregó sin pasar por listo">Entregado</button>`
+      : est==='hacer'?`<button class="btn sm" data-acc="listo" data-ids="${ids}">✓ ${X.length>1?'Todo listo':'Listo'}</button><button class="btn sm ghost" data-acc="entregado" data-ids="${ids}" title="Si ya se entregó sin pasar por listo">Entregado</button><button class="btn sm ghost" data-acc="espera" data-ids="${ids}" title="Sin prioridad: sale de Para hacer y queda en espera">En espera</button>`
+      : est==='espera'?`<button class="btn sm" data-acc="reactivar" data-ids="${ids}">Volver a Para hacer</button>`
       : est==='listo'?`<button class="btn sm ok" data-acc="entregado" data-ids="${ids}">${X.length>1?'Entregar todo':'Entregado'}</button>`
       : `<span class="small muted">entregado ${fmt(t0.entregado)}</span><button class="btn sm ghost" data-acc="deshacer" data-ids="${ids}">Deshacer</button>`}</div>
     ${(() => { const sin = X.filter(t=>!t.nombre && !t.inf && c!=='R'); const con = c==='R' && X.length===1 ? [] : X.filter(t=>!sin.includes(t));
@@ -436,6 +440,8 @@ async function accionTaller(ids, acc){
   if(acc==='lotiene'){ quien = prompt('¿Quién lo tiene? (Claudio, Maxi, Lucho…)', ''); if(!quien || !quien.trim()) return; }
   const ok = acc==='retirado' ? await tallerUpdate(ids,{retirar:null, lo_tiene:null, fecha:HOY})
     : acc==='lotiene' ? await tallerUpdate(ids,{lo_tiene:quien.trim(), retirado:HOY})
+    : acc==='espera' ? await tallerUpdate(ids,{espera:HOY})
+    : acc==='reactivar' ? await tallerUpdate(ids,{espera:null})
     : acc==='listo' ? await tallerUpdate(ids,{listo:HOY})
     : acc==='entregado' ? (await Promise.all(L.map(t=>tallerUpdate([t.tid],{entregado:HOY, cerrado:true, informe:t.inf||null, trabajo:t.cat==='R'?trabajo:null})))).every(Boolean)
     : await tallerUpdate(ids,{entregado:null, cerrado:false});
@@ -445,7 +451,7 @@ async function accionTaller(ids, acc){
     await docSet('equipos_cli', id, sinVacios({...y, cliente:t.cliente, sede:t.sede||y.sede, tipo:t.tipo, id_equipo:idEq, frecuencia:y.frecuencia||0, ultima:HOY, ultimo_trabajo:tr, clase:'Correctivo',
       historial:[...(y.historial||[]), {fecha:HOY, trabajo:tr, clase:'Correctivo', por:S.email||''}]}));
   }
-  if(ok){ if(acc==='entregado') sumarEquiposCli(); toast(acc==='lotiene'?'Anotado: lo tiene '+quien.trim():acc==='listo'?'Marcado como listo':acc==='entregado'?'Marcado como entregado':acc==='retirado'?'Pasó al taller':'Listo, vuelve a "Listos"'); render(); }
+  if(ok){ if(acc==='entregado') sumarEquiposCli(); toast(acc==='espera'?'Quedó en espera (sin prioridad)':acc==='reactivar'?'Volvió a Para hacer':acc==='lotiene'?'Anotado: lo tiene '+quien.trim():acc==='listo'?'Marcado como listo':acc==='entregado'?'Marcado como entregado':acc==='retirado'?'Pasó al taller':'Listo, vuelve a "Listos"'); render(); }
 }
 
 // Pendientes: todo lo que hay que retirar, entregar o hacer en un cliente y todavía no tiene viaje asignado
@@ -626,7 +632,7 @@ function vCompras(){
 // Se cuenta cada micropipeta y termómetro de clientes cuando se marca LISTO o ENTREGADO en el sistema (web o bot),
 // desde el CORTE_PAGOS (lo anterior ya está pagado). Los informes del Drive no suman aparte: así nada se cuenta dos veces.
 const CORTE_PAGOS = '2026-10-15', PRECIO = {M:1500, T:3000}, PERSONAS = ['Meli','Jorge'];
-const hizoDefault = cat => cat==='T' ? ['Meli'] : ['Meli','Jorge'];
+const hizoDefault = () => PERSONAS;
 const plata = n => '$ ' + Math.round(n).toLocaleString('es-AR');
 function cobrables(){ return memo('cobr', () => {
   const L = [], usados = new Set();
@@ -634,7 +640,7 @@ function cobrables(){ return memo('cobr', () => {
     const f = t.listo || (t.auto && t.auto.fecha) || t.entregado || t.fecha; if(t.inf) usados.add(t.inf);
     if(f < CORTE_PAGOS) return;
     L.push({k:'tal:'+t.tid, cat:t.cat, cliente:t.cliente, sede:t.sede||'', id:t.nombre||'', inf:t.inf||'', fecha:f}); });
-  L.forEach(x=>{ const c = S.cobros[x.k]||{}; x.hizo = c.hizo || hizoDefault(x.cat); x.pago = c.pago || {}; x.monto = PRECIO[x.cat]; });
+  L.forEach(x=>{ const c = S.cobros[x.k]||{}; x.hizo = PERSONAS; x.pago = c.pago || {}; x.monto = PRECIO[x.cat]; });
   return L.sort((a,b)=>b.fecha.localeCompare(a.fecha)); }); }
 const parte = (x,p) => x.hizo.includes(p) ? x.monto : 0;   // a cada uno le corresponde el monto completo por equipo
 const pendiente = (x,p) => x.hizo.includes(p) && !x.pago[p];
@@ -653,10 +659,21 @@ function vPagos(){
       <div class="small muted">${tagCat(x.cat, G.length)} listo ${fmtA(x.fecha)} · ${plata(G.length*x.monto)}${x.hizo.length>1?" a cada uno":""}</div>
       <div class="small muted mono" style="margin-top:3px">${G.map(y=>esc(y.id||y.inf||'sin ID')).join(' · ')}</div></div></div>
       <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px">${PERSONAS.map(p=>{ const en = G.some(y=>y.hizo.includes(p)), pago = G.every(y=>!y.hizo.includes(p)||y.pago[p]);
-        return `<button class="btn sm ${!en?'ghost':pago?'ok':''}" data-cob="${esc(G.map(y=>y.k).join(','))}" data-p="${p}" title="Tocá para cambiar">${p}: ${!en?'no participó':pago?'pagado':'pendiente'}</button>`; }).join('')}</div></div>`; }).join('')}</div></div>`
+        return `<button class="btn sm ${!en?'ghost':pago?'ok':''}" data-cob="${esc(G.map(y=>y.k).join(','))}" data-p="${p}" title="Tocá para cambiar">${p}: ${pago?'pagado':'pendiente'}</button>`; }).join('')}</div></div>`; }).join('')}</div></div>`
     : `<div class="card flat empty">${ver==='pend'?'No hay nada pendiente de pago.':'Nada para mostrar.'}</div>`}
+  ${vCupos()}
   ${vAnio()}
-  <p class="small muted">Tocá el nombre en cada fila: pendiente → pagado → no participó → pendiente. Termómetros cuentan por defecto para Meli; micropipetas para Meli y Jorge. A cada uno le corresponde el monto completo por equipo.</p>`;
+  <p class="small muted">Tocá el nombre en cada fila para pasarla de pendiente a pagado (o al revés). A cada uno le corresponde $1.500 por micropipeta y $3.000 por termómetro.</p>`;
+}
+// Cupos anuales cotizados (Rossi: 80 micropipetas en 2026; 32 hechas hasta el 05/11; desde ahí cuenta lo listo o entregado, por sector)
+const CUPOS = [{cliente:'Rossi', tipo:'M', anio:'2026', cupo:80, base:32, desde:'2026-11-05'}];
+function vCupos(){
+  return CUPOS.map(c=>{ const X = taller().filter(t=>t.cat===c.tipo && mismoCli(t.cliente,c.cliente) && (t.estado==='listo'||t.estado==='entregado') && (t.listo||t.entregado||'')>=c.desde);
+    const n = c.base + X.length, pct = Math.min(100, Math.round(n*100/c.cupo)), sec = agrupar(X, t=>[t.sede, sectorDe(t)].filter(Boolean).join(' · ')||'Sin sector');
+    return `<div class="card" style="margin-top:16px"><div class="row"><div class="grow"><b>${esc(c.cliente)} · cupo ${c.anio}</b><div class="small muted">${c.tipo==="M"?"Micropipetas":"Termómetros"} cotizadas: ${c.cupo}. Hechas hasta el ${fmtA(c.desde)}: ${c.base}.</div></div>
+      <div style="text-align:right"><div style="font:700 26px Inter">${n} / ${c.cupo}</div><div class="small muted">quedan ${Math.max(0,c.cupo-n)}</div></div></div>
+      <div style="height:6px;background:var(--line);border-radius:6px;margin:10px 0;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--acc)"></div></div>
+      ${sec.length?`<div class="small"><b>Desde el ${fmtA(c.desde)}, por sector:</b> ${sec.map(([s,Y])=>`${esc(s)} ${Y.length}`).join(' · ')}</div>`:`<div class="small muted">Todavía no hay nuevas desde el ${fmtA(c.desde)}.</div>`}</div>`; }).join('');
 }
 // Calibraciones del año por cliente: informes del Drive + equipos listos/entregados en el sistema que no tienen informe
 function vAnio(){
@@ -672,11 +689,9 @@ function vAnio(){
 }
 async function ciclarCobro(keys, p){
   const L = cobrables().filter(x=>keys.includes(x.k)); if(!L.length) return;
-  const x0 = L[0], estado = !x0.hizo.includes(p) ? 'no' : x0.pago[p] ? 'pagado' : 'pend';
-  for(const x of L){ const c = {...(S.cobros[x.k]||{}), hizo:[...x.hizo], pago:{...x.pago}};
-    if(estado==='pend'){ c.pago[p] = HOY; }
-    else if(estado==='pagado'){ delete c.pago[p]; c.hizo = c.hizo.filter(q=>q!==p); if(!c.hizo.length) c.hizo = PERSONAS.filter(q=>q!==p); }
-    else { c.hizo = [...new Set([...c.hizo, p])]; delete c.pago[p]; }
+  const pagar = !L[0].pago[p];
+  for(const x of L){ const c = {...(S.cobros[x.k]||{}), pago:{...x.pago}}; delete c.hizo;
+    if(pagar) c.pago[p] = HOY; else delete c.pago[p];
     if(!await docSet('cobros', x.k, c)) return; }
   S.r++; render();
 }
