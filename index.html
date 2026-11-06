@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.43';
+const VERSION = 'v7.44';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -500,10 +500,23 @@ const internosAvisar = () => [...internos().filter(x=>x.proxima<=sumarDias(HOY,4
 function vPropios(){
   const L = propios(); if(!L.length) return '';
   const fila = x => { const p = proxPropio(x);
-    return `<div><div class="grow"><b class="mono">${esc(x.tipo==='Micropipeta' ? [x.marca,x.volumen].filter(Boolean).join(' ')+' '+(x.id||'') : (x.id||x.k))}</b>
+    return `<div class="click" data-eprop="${esc(x.k)}"><div class="grow"><b class="mono">${esc(x.tipo==='Micropipeta' ? [x.marca,x.volumen].filter(Boolean).join(' ')+' '+(x.id||'') : (x.id||x.k))}</b>
       <div class="small muted">${x.estado==='Disponible'||!x.esta_en||/mitash/i.test(x.esta_en)?'En Mitash':'En '+esc(x.esta_en)+(x.desde?' desde '+fmtA(x.desde):'')}${x.ultima_cal?' · última cal. '+fmtA(x.ultima_cal):''}${x.certificado?' · cert. '+esc(x.certificado):''}</div></div>
       ${p?`<span class="tag ${p<HOY?'bad':p<=sumarDias(HOY,45)?'warn':'ok'}">${p<HOY?'vencido':'vence'} ${fmtA(p)}</span>`:'<span class="tag bad">falta calibrar</span>'}</div>`; };
-  return agrupar(L, x=>x.tipo).map(([t,X])=>`<div class="sec-t">${t==='Micropipeta'?'Micropipetas de Mitash':'Termómetros de Mitash'} <span class="n">· ${X.length}</span></div><div class="card"><div class="list">${X.map(fila).join('')}</div></div>`).join('');
+  return `<div class="small muted" style="margin:14px 0 -4px">Tocá uno para cambiar dónde está (prestado a un cliente o de vuelta en Mitash).</div>` + agrupar(L, x=>x.tipo).map(([t,X])=>`<div class="sec-t">${t==='Micropipeta'?'Micropipetas de Mitash':'Termómetros de Mitash'} <span class="n">· ${X.length}</span></div><div class="card"><div class="list">${X.map(fila).join('')}</div></div>`).join('');
+}
+function formPropio(k){
+  const x = S.prestamos[k]; if(!x) return; const nom = x.id||k, enM = x.estado==='Disponible'||!x.esta_en||/mitash/i.test(x.esta_en);
+  hoja(`<div class="hd"><h2>${esc(nom)} de Mitash</h2><button class="ibtn" data-cerrar aria-label="Cerrar">×</button></div>
+  <form class="f" id="fprop">
+    <label>¿Dónde está? <span style="font-weight:500">(vacío = en Mitash)</span><input name="esta_en" list="dlcli" autocomplete="off" value="${esc(enM?'':x.esta_en)}" placeholder="Ej.: Maipú · San Fernando"></label>${dlClientes()}
+    <label>Desde<input name="desde" type="date" value="${esc(enM?'':(x.desde||HOY))}"></label>
+    <div class="two"><label>Última calibración<input name="ultima_cal" type="date" value="${esc(x.ultima_cal||'')}"></label><label>N° de certificado<input name="certificado" value="${esc(x.certificado||'')}"></label></div>
+    <button class="btn pri" style="justify-content:center">Guardar</button></form>`);
+  $('#fprop').onsubmit = async e => { e.preventDefault(); const d = Object.fromEntries(new FormData(e.target).entries()); const donde = d.esta_en.trim(), vuelve = !donde || /^mitash$/i.test(donde);
+    const n = {...x, estado: vuelve ? 'Disponible' : 'Prestado', esta_en: vuelve ? 'Mitash' : donde, desde: vuelve ? null : (d.desde||HOY), ultima_cal: d.ultima_cal||x.ultima_cal||null, certificado: d.certificado.trim()||null, actualizado: HOY, por: S.email||null};
+    if(n.ultima_cal !== x.ultima_cal) n.proxima_cal = null;
+    if(await docSet('prestamos', k, sinVacios(n))){ cerrar(); toast(vuelve ? nom+' está en Mitash' : nom+' prestado en '+donde); render(); } };
 }
 function vInternos(){
   const L = internos();
@@ -1116,6 +1129,7 @@ function bind(){
   $$('[data-htl]').forEach(el=>el.onclick = () => trabajoLugarHecho(el.dataset.htl));
   $$('[data-nint]').forEach(el=>el.onclick = () => formInterno(null));
   $$('[data-eint]').forEach(el=>el.onclick = () => formInterno(el.dataset.eint));
+  $$('[data-eprop]').forEach(el=>el.onclick = () => formPropio(el.dataset.eprop));
   $$('[data-ncon]').forEach(el=>el.onclick = () => formContacto(null));
   $$('[data-ncli]').forEach(el=>el.onclick = () => formCliente(null));
   $$('[data-ncli-nom]').forEach(el=>el.onclick = () => formCliente(null, el.dataset.ncliNom));
