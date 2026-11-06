@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.42';
+const VERSION = 'v7.43';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -357,7 +357,7 @@ function tarjetaViaje(v){
   return `<div class="card trip ${v.fecha<=HOY?'hoy':''}">
     <div class="row"><div class="grow"><div class="when">${cuando(v.fecha)}${v.hora?' · '+esc(v.hora):''}${v.fecha<HOY?' · pendiente':''}</div>
       <div class="cli">${esc(v.cliente)}${v.sede?` <span class="muted" style="font-weight:500">· ${esc(v.sede)}</span>`:''}</div>
-      <div class="small muted">${esc(v.tecnico||'Lucho')}${v.repetir?' · '+REPETIR[v.repetir].toLowerCase():''}</div></div>
+      <div class="small muted">${esc(v.tecnico||'Lucho')}${v.repetir?' · '+String(REPETIR[v.repetir]||('se repite: '+v.repetir)).toLowerCase():''}</div></div>
       <button class="btn sm" data-evis="${esc(v.id)}">Editar</button></div>
     <div class="todo">
       ${v.tareas?`<div><div><b>Trabajo</b>${esc(v.tareas)}</div></div>`:''}
