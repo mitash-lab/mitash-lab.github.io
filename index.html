@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.44';
+const VERSION = 'v7.45';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -357,7 +357,7 @@ function tarjetaViaje(v){
   return `<div class="card trip ${v.fecha<=HOY?'hoy':''}">
     <div class="row"><div class="grow"><div class="when">${cuando(v.fecha)}${v.hora?' · '+esc(v.hora):''}${v.fecha<HOY?' · pendiente':''}</div>
       <div class="cli">${esc(v.cliente)}${v.sede?` <span class="muted" style="font-weight:500">· ${esc(v.sede)}</span>`:''}</div>
-      <div class="small muted">${esc(v.tecnico||'Lucho')}${v.repetir?' · '+String(REPETIR[v.repetir]||('se repite: '+v.repetir)).toLowerCase():''}</div></div>
+      <div class="small muted">${esc(v.tecnico||'Lucho')}${v.repetir&&pasoRep(v.repetir)?' · '+String(REPETIR[v.repetir]||('se repite: '+v.repetir)).toLowerCase():''}${v.pospuesto_de?' · pospuesto (era el '+fmt(v.pospuesto_de)+')':''}</div></div>
       <button class="btn sm" data-evis="${esc(v.id)}">Editar</button></div>
     <div class="todo">
       ${v.tareas?`<div><div><b>Trabajo</b>${esc(v.tareas)}</div></div>`:''}
@@ -368,7 +368,7 @@ function tarjetaViaje(v){
       ${trabajosDe(v).length?`<div><div><b>Trabajo a realizar en el lugar</b><span class="small">${trabajosDe(v).map(lineaTL).join(' · ')}</span></div></div>`:''}
       ${!v.tareas && !lle.length && !ret.length && !ven.length && !trabajosDe(v).length?'<div><div class="small muted">Nada pendiente para este cliente.</div></div>':''}
     </div>
-    <button class="btn ok" data-hvis="${esc(v.id)}">✓ Viaje hecho</button></div>`;
+    <button class="btn ok" data-hvis="${esc(v.id)}">✓ Viaje hecho</button> <button class="btn" data-posp="${esc(v.id)}" data-pf="${esc(v.fecha)}">Posponer</button></div>`;
 }
 
 const esCalib = t => t.cat!=='R' || /perfil/i.test(t.tipo||'');   // micros, termómetros y perfiles térmicos (si se indica)
@@ -884,6 +884,21 @@ function formIngreso(){
     if(await tallerInsert(filas)){ cerrar(); S.f.tal=d.listo?'listo':'hacer'; if(d.espera) toast('Quedó en espera: está al final de Para hacer'); S.f.cat=''; toast('Ingreso guardado'); location.hash==='#taller' ? render() : (location.hash='taller'); } };
 }
 
+// Posponer un viaje: si se repite, se pasa solo esa vez (las demás fechas siguen igual)
+function formPosponer(vid, fecha){
+  const base = vid.split('@')[0], x = S.vis[base]; if(!x) return; const rep = vid.includes('@');
+  const ops = [[7,'1 semana'],[14,'2 semanas'],[30,'1 mes']];
+  hoja(`<div class="hd"><h2>Posponer viaje</h2><button class="ibtn" data-cerrar aria-label="Cerrar">×</button></div>
+  <p class="sub" style="margin-top:0">${esc(x.cliente)}${x.sede?' · '+esc(x.sede):''} · ${cuando(fecha)}${rep?' (se repite: se pasa solo esta vez)':''}</p>
+  <div class="row" style="flex-wrap:wrap;gap:8px">${ops.map(([n,t])=>`<button class="btn" data-pn="${n}">${t} <span class="small muted">(${fmt(sumarDias(fecha<HOY?HOY:fecha,n))})</span></button>`).join('')}</div>
+  <form class="f" id="fposp" style="margin-top:14px"><label>U otra fecha<input name="fecha" type="date" required min="${HOY}"></label><button class="btn pri" style="justify-content:center">Pasar a esa fecha</button></form>`);
+  const pasar = async nueva => { if(!nueva) return;
+    const ok = rep ? (await visSet(base, {...x, hechas:[...(x.hechas||[]), fecha]}) && await visSet('v'+Date.now(), {...x, fecha:nueva, repetir:'', hechas:[], hecho:false, pospuesto_de:fecha}))
+                   : await visSet(base, {...x, fecha:nueva, pospuesto_de:x.pospuesto_de||fecha});
+    if(ok){ cerrar(); toast('Viaje pasado al '+fmt(nueva)); render(); } };
+  $$('[data-pn]').forEach(el=>el.onclick = () => pasar(sumarDias(fecha<HOY?HOY:fecha, +el.dataset.pn)));
+  $('#fposp').onsubmit = e => { e.preventDefault(); pasar(e.target.fecha.value); };
+}
 function formViaje(id, pre){
   if(id) id = id.split('@')[0];
   const v = id ? S.vis[id] : Object.assign({fecha:sumarDias(HOY,1), tecnico:'Lucho'}, pre||{});
@@ -1117,6 +1132,7 @@ function bind(){
   $$('[data-nvis-cli]').forEach(el=>el.onclick = () => formViaje(null, {cliente:el.dataset.nvisCli, sede:el.dataset.nvisSede||''}));
   $$('[data-evis]').forEach(el=>el.onclick = () => formViaje(el.dataset.evis));
   $$('[data-hvis]').forEach(el=>el.onclick = () => viajeHecho(el.dataset.hvis));
+  $$('[data-posp]').forEach(el=>el.onclick = () => formPosponer(el.dataset.posp, el.dataset.pf));
   $$('[data-eq]').forEach(el=>el.onclick = () => fichaEquipo(el.dataset.eq));
   $$('[data-aviso]').forEach(el=>el.onclick = () => avisar(el.dataset.aviso));
   $$('[data-seg]').forEach(el=>el.onclick = () => marcarSeg(el.dataset.seg, el.dataset.est));
