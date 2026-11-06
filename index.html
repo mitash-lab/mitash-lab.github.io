@@ -148,18 +148,18 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.38';
+const VERSION = 'v7.39';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const DIAS = ['dom','lun','mar','mié','jue','vie','sáb'];
-const isoD = d => { const x=new Date(d); x.setMinutes(x.getMinutes()-x.getTimezoneOffset()); return x.toISOString().slice(0,10); };
+const isoD = d => { const x=new Date(d); if(isNaN(x)) return ''; x.setMinutes(x.getMinutes()-x.getTimezoneOffset()); return x.toISOString().slice(0,10); };   // una fecha mal cargada no traba la web
 const HOY = isoD(new Date()); const MES = HOY.slice(0,7);
-const sumarDias = (f,n) => { const d=new Date(f+'T12:00'); d.setDate(d.getDate()+n); return isoD(d); };
+const sumarDias = (f,n) => { const d=new Date(String(f).slice(0,10)+'T12:00'); d.setDate(d.getDate()+(+n||0)); return isoD(d); };
 const sumarMeses = (ym,n) => { const d=new Date(+ym.slice(0,4), +ym.slice(5,7)-1+n, 1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); };
-const fmt = f => f ? `${f.slice(8,10)}/${f.slice(5,7)}` : '—';
-const fmtA = f => f ? `${f.slice(8,10)}/${f.slice(5,7)}/${f.slice(2,4)}` : '—';
+const fmt = f => f ? `${String(f).slice(8,10)}/${String(f).slice(5,7)}` : '—';
+const fmtA = f => f ? `${String(f).slice(8,10)}/${String(f).slice(5,7)}/${String(f).slice(2,4)}` : '—';
 const mesTxt = ym => `${MESES[+ym.slice(5,7)-1]}${ym.slice(0,4)!==HOY.slice(0,4)?' '+ym.slice(0,4):''}`;
 const cap = s => s ? s[0].toUpperCase()+s.slice(1) : s;
 const cuando = f => { if(f===HOY) return 'Hoy'; if(f===sumarDias(HOY,1)) return 'Mañana'; if(f===sumarDias(HOY,-1)) return 'Ayer';
@@ -337,7 +337,9 @@ function render(){
   $('#tabs').innerHTML = TABS.filter(([v])=>v!=='pedidos' || S.solOk).map(([v,i,t,c])=>{ const n = v==='pedidos' ? nPed : v==='lugar' ? trabajosLugar().length : v==='compras' ? Object.values(S.compras).filter(x=>!x.comprado).length : v==='internos' ? internosAvisar().length : 0;
     return `<a href="#${v}" class="${vista===v?'on':''}"><span class="i">${i}</span>${c?`<span class="lg">${t}</span><span class="cort">${c}</span>`:t}${n?`<span class="dot ${v==='pedidos'?'':'gris'}">${n}</span>`:''}</a>`; }).join('');
   const V = {taller:vTaller, recorridos:vRecorridos, contactos:vClientes, clientes:vClientes, compras:vCompras, lugar:vLugar, cliente:vCliente, internos:vInternosPag, pagos:vPagos, control:vControl, vencimientos:vVencimientos, pedidos:vPedidos, revisar:vRevisar}[vista] || vTaller;
-  $('#main').innerHTML = V(); bind();
+  try { $('#main').innerHTML = V(); }
+  catch(e){ console.error(e); $('#main').innerHTML = `<h1>Esta pantalla tuvo un error</h1><p class="sub">Hay un dato mal cargado. Las otras solapas andan. Pasale a Claude este texto: <b>${esc(vista+': '+(e.message||e))}</b></p>`; }
+  try { bind(); } catch(e){ console.error(e); }
 }
 window.addEventListener('hashchange', () => { S.view = location.hash.slice(1)||'inicio'; render(); window.scrollTo(0,0); });
 
