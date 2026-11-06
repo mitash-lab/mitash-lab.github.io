@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.39';
+const VERSION = 'v7.40';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -190,7 +190,7 @@ const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && location.s
 const conTiempo = (p,ms) => Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(new Error('tiempo')),ms))]);
 
 async function cargarTabla(t){ const out=[]; for(let i=0;;i+=1000){ const {data,error}=await sb.from(t).select('data').range(i,i+999); if(error) throw error; out.push(...data.map(d=>d.data)); if(data.length<1000) break; } return out; }
-const deTaller = t => ({retirar:!!t.retirar, en_camino:t.en_camino||null, en_camino_desde:t.en_camino_desde||null, tid:String(t.id), ref:t.ref||null, fecha:t.fecha, tipo:t.tipo||'', cliente:t.cliente, sede:t.sede||'', id_equipo:t.id_equipo||'', serie:t.serie||'',
+const deTaller = t => ({...t, retirar:!!t.retirar, en_camino:t.en_camino||null, en_camino_desde:t.en_camino_desde||null, tid:String(t.id), ref:t.ref||null, fecha:t.fecha, tipo:t.tipo||'', cliente:t.cliente, sede:t.sede||'', id_equipo:t.id_equipo||'', serie:t.serie||'',
   equipo:t.equipo||null, pedido:t.pedido||'', detalle:t.detalle||'', solicitud:t.solicitud||null, listo:t.listo||null, entregado:t.entregado||null, informe:t.informe||null, cerrado:!!t.cerrado});
 // El taller se guarda en la tabla "docs" (colección "taller"): no necesita tablas nuevas. Lo mismo podrá escribir el bot.
 async function cargarTaller(){ if(LOCAL) return;
@@ -844,10 +844,12 @@ function formIngreso(){
     <label>Cliente<input name="cliente" list="dlcli" required autocomplete="off"></label>${dlClientes()}
     <div class="pick">${['M','T','R'].map((c,i)=>`<label><input type="radio" name="cat" value="${c}" ${i===0?'checked':''}> ${CATN[c][0]} ${CATN[c][2]}</label>`).join('')}</div>
     <div class="two"><label>Cantidad<input name="cant" type="number" min="1" max="200" value="1" required></label><label>Sede (si tiene)<input name="sede"></label></div>
+    <label>Sector (si sabés)<input name="sector" placeholder="Ej.: Inmuno, Histo"></label>
     <label id="lequipo" hidden>Qué equipo<input name="equipo" placeholder="Ej.: centrífuga Rolco, estufa"></label>
     <label>IDs <span style="font-weight:500">(opcional, uno por renglón. Si no los ponés, se completan solos con los informes)</span><textarea name="ids" rows="3"></textarea></label>
     <label>Detalle (opcional)<input name="detalle" placeholder="Ej.: no enciende · los trajo Lucho"></label>
     <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" name="retirar" style="width:auto"> Todavía hay que ir a retirarlo</label>
+    <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" name="listo" style="width:auto"> Ya está hecho: va directo a Para entregar</label>
     <label>Fecha de ingreso<input name="fecha" type="date" value="${HOY}"></label>
     <div class="err" id="ierr"></div><button class="btn pri" style="justify-content:center">Guardar ingreso</button></form>`);
   const fm = $('#fing');
@@ -859,8 +861,8 @@ function formIngreso(){
     const tipo = d.cat==='R' ? d.equipo.trim() : CATN[d.cat][1];
     const filas = Array.from({length:n}, (_,i)=>{ const id = ids[i]||null;
       const e = id && S.equipos.find(e=>mismoCli(e.cliente,cli) && CAT(e.tipo)===d.cat && [e.id_equipo,e.serie].some(x=>x && limpioId(x)===limpioId(id)));
-      return {fecha:d.fecha||HOY, cliente:cli, sede:d.sede.trim()||null, tipo, id_equipo:id, equipo:e?e.clave:null, pedido:d.cat==='R'?'Reparación':'Calibración', detalle:d.detalle.trim()||null, retirar:d.retirar?true:null}; });
-    if(await tallerInsert(filas)){ cerrar(); S.f.tal='hacer'; S.f.cat=''; toast('Ingreso guardado'); location.hash==='#taller' ? render() : (location.hash='taller'); } };
+      return {fecha:d.fecha||HOY, cliente:cli, sede:d.sede.trim()||null, sector:(d.sector||'').trim()||null, tipo, id_equipo:id, equipo:e?e.clave:null, pedido:d.cat==='R'?'Reparación':'Calibración', detalle:d.detalle.trim()||null, retirar:d.retirar&&!d.listo?true:null, listo:d.listo?HOY:null}; });
+    if(await tallerInsert(filas)){ cerrar(); S.f.tal=d.listo?'listo':'hacer'; S.f.cat=''; toast('Ingreso guardado'); location.hash==='#taller' ? render() : (location.hash='taller'); } };
 }
 
 function formViaje(id, pre){
