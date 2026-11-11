@@ -148,7 +148,7 @@ window.addEventListener('error', e => { const m=document.getElementById('main');
 </script>
 <script>
 (() => {
-const VERSION = 'v7.45';
+const VERSION = 'v7.46';
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -296,6 +296,8 @@ function taller(){ return memo('tal', () => {
     t.estado = t.entregado ? 'entregado' : t.retirar ? (t.lo_tiene ? 'transito' : 'retirar') : (t.listo || t.inf) ? 'listo' : t.espera ? 'espera' : 'hacer'; });   // transito = ya retirado, lo tiene alguien, todavía no llegó al taller
   return L; }); }
 const listos = () => taller().filter(t=>t.estado==='listo');
+// Reparaciones: en qué taller están (si no se dice, Taller UTN)
+const tallerDe = t => /quilmes/i.test(t.taller_rep||'') ? 'Quilmes' : 'UTN';
 const porHacer = () => taller().filter(t=>t.estado==='hacer');
 // lote = lo que entró junto (mismo cliente, día y tipo)
 function lotes(L){ const m=new Map(); L.forEach(t=>{ const k=[t.cliente,t.sede,sectorDe(t),t.fecha,t.cat,t.solicitud||''].join('|'); m.has(k)||m.set(k,[]); m.get(k).push(t); });
@@ -381,7 +383,7 @@ function vTaller(){
   return `<div class="row"><div class="grow"><h1>Taller</h1></div><button class="btn pri" data-ning>+ Ingreso</button></div>
   <div class="stats" id="segtal" style="grid-template-columns:repeat(4,1fr);margin:12px 0 16px">${[['retirar','Para retirar','warn'],['hacer','Para hacer','acc'],['listo','Para entregar','ok'],['entregado','Entregados','']].map(([k,t,c])=>
     `<button class="stat ${c}" data-v="${k}" style="text-align:left;font:inherit;${f.tal===k?'outline:2px solid var(--acc);':'opacity:.75;'}"><div class="k">${t}</div><div class="v">${n(k)}</div></button>`).join('')}</div>
-  ${grupos.length ? (f.tal==='hacer' ? [['Calibraciones', esCalib], ['Reparaciones en el taller', t=>!esCalib(t)]] : [['', ()=>true]]).map(([tit, fil])=>{ const G = agrupar(L.filter(fil), t=>t.cliente).sort((a,b)=>b[1].length-a[1].length);
+  ${grupos.length ? (f.tal==='hacer' ? [['Calibraciones', esCalib], ['Reparaciones · Taller UTN', t=>!esCalib(t) && tallerDe(t)==='UTN'], ['Reparaciones · Taller Quilmes', t=>!esCalib(t) && tallerDe(t)==='Quilmes']] : [['', ()=>true]]).map(([tit, fil])=>{ const G = agrupar(L.filter(fil), t=>t.cliente).sort((a,b)=>b[1].length-a[1].length);
       return !G.length ? '' : (tit?`<div class="sec-t">${tit} <span class="n">· ${L.filter(fil).length}</span></div>`:'') + G.map(([c,X])=>{ const v = f.tal==='listo' && viajePara(c, X[0].sede);
       return `<div class="card"><div class="row"><div class="grow cli">${esc(c)}</div>${f.tal!=='listo' ? '' : v ? `<span class="tag acc">Viaje ${cuando(v.fecha).toLowerCase()} · ${esc(v.tecnico||'Lucho')}</span>` : `<button class="btn sm" data-nvis-cli="${esc(c)}">Agendar entrega</button>`}</div>${lotes(X).map(lote).join('')}</div>`; }).join(''); }).join('')
     : `<div class="card flat empty">${f.tal==='retirar'?'No hay nada para retirar.':f.tal==='hacer'?'No hay nada para hacer en el taller.':f.tal==='listo'?'No hay nada listo para entregar.':'Sin entregas en los últimos 2 meses.'}</div>`}
@@ -399,9 +401,9 @@ function lote(X){
   const desc = c==='R' ? esc(t0.tipo + (X.length===1 && t0.nombre?' '+t0.nombre:'') + (det?' · '+det:'')) : (det ? esc(det) : '');
   return `<div class="lote"><div class="row"><div class="grow">${tagCat(c, X.length)} ${lugar?`<b style="font-size:14px">${esc(lugar)}</b> `:''}<span class="small muted">· entró ${fmt(t0.fecha)}${['hacer','espera','retirar','transito'].includes(est) && hace(t0.fecha)>=7 ? ` <b>(hace ${hace(t0.fecha)} días)</b>` : ''}</span>${est==='listo'&&t0.en_camino?` <span class="tag warn">en camino con ${esc(t0.en_camino)} desde ${fmt(t0.en_camino_desde)}</span>`:''}${est==='transito'?` <span class="tag warn">retirado ${fmt(t0.retirado)} · lo tiene ${esc(t0.lo_tiene)}, falta que llegue al taller</span>`:''}${est==='retirar'?(v=>v?` <span class="tag acc">viaje asignado: ${cuando(v.fecha)}${v.tecnico?' · '+esc(v.tecnico):''}</span>`:' <span class="tag bad">pendiente · sin viaje asignado</span>')(viajePara(t0.cliente, t0.sede)):''}
       ${desc?`<div class="small" style="margin-top:4px">${desc}</div>`:''}</div>
-    ${est==='transito'?`<button class="btn sm pri" data-acc="retirado" data-ids="${ids}">Llegó a Mitash</button>`
-      : est==='retirar'?`<button class="btn sm" data-acc="lotiene" data-ids="${ids}">Retirado: lo tiene…</button><button class="btn sm pri" data-acc="retirado" data-ids="${ids}">Ya está en Mitash</button>`
-      : est==='hacer'?`<button class="btn sm" data-acc="listo" data-ids="${ids}">✓ ${X.length>1?'Todo listo':'Listo'}</button><button class="btn sm ghost" data-acc="entregado" data-ids="${ids}" title="Si ya se entregó sin pasar por listo">Entregado</button><button class="btn sm ghost" data-acc="espera" data-ids="${ids}" title="Sin prioridad: sale de Para hacer y queda en espera">En espera</button>`
+    ${est==='transito'?(c==='R'?`<button class="btn sm pri" data-acc="retirado" data-ids="${ids}">Llegó al taller UTN</button><button class="btn sm pri" data-acc="retiradoQ" data-ids="${ids}">Llegó al taller Quilmes</button>`:`<button class="btn sm pri" data-acc="retirado" data-ids="${ids}">Llegó a Mitash</button>`)
+      : est==='retirar'?`<button class="btn sm" data-acc="lotiene" data-ids="${ids}">Retirado: lo tiene…</button>${c==='R'?`<button class="btn sm pri" data-acc="retirado" data-ids="${ids}">Está en taller UTN</button><button class="btn sm pri" data-acc="retiradoQ" data-ids="${ids}">Está en taller Quilmes</button>`:`<button class="btn sm pri" data-acc="retirado" data-ids="${ids}">Ya está en Mitash</button>`}`
+      : est==='hacer'?`<button class="btn sm" data-acc="listo" data-ids="${ids}">✓ ${X.length>1?'Todo listo':'Listo'}</button>${c==='R'?(tallerDe(t0)==='Quilmes'?`<button class="btn sm ghost" data-acc="aUTN" data-ids="${ids}">Pasar a taller UTN</button>`:`<button class="btn sm ghost" data-acc="aQuilmes" data-ids="${ids}">Pasar a taller Quilmes</button>`):''}<button class="btn sm ghost" data-acc="entregado" data-ids="${ids}" title="Si ya se entregó sin pasar por listo">Entregado</button><button class="btn sm ghost" data-acc="espera" data-ids="${ids}" title="Sin prioridad: sale de Para hacer y queda en espera">En espera</button>`
       : est==='espera'?`<button class="btn sm" data-acc="reactivar" data-ids="${ids}">Volver a Para hacer</button>`
       : est==='listo'?`<button class="btn sm ok" data-acc="entregado" data-ids="${ids}">${X.length>1?'Entregar todo':'Entregado'}</button>`
       : `<span class="small muted">entregado ${fmt(t0.entregado)}</span><button class="btn sm ghost" data-acc="deshacer" data-ids="${ids}">Deshacer</button>`}</div>
@@ -421,6 +423,7 @@ function formEditarLote(tids){
     <label>Equipo<input name="tipo" value="${esc(t0.tipo)}"></label>
     <label>IDs <span style="font-weight:500">(uno por renglón, en orden; vacío = sin ID)</span><textarea name="ids" rows="${Math.min(8,X.length+1)}">${X.map(t=>esc(t.id_equipo||'')).join('\n')}</textarea></label>
     <label>Detalle<input name="detalle" value="${esc(t0.detalle||'')}"></label>
+    ${t0.cat==='R'?`<label>Taller<select name="taller_rep"><option value="UTN" ${tallerDe(t0)==='UTN'?'selected':''}>Taller UTN</option><option value="Quilmes" ${tallerDe(t0)==='Quilmes'?'selected':''}>Taller Quilmes</option></select></label>`:''}
     <div class="row"><button class="btn pri" style="flex:1;justify-content:center">Guardar cambios</button><button type="button" class="btn" id="bored">Borrar ${X.length>1?'los '+X.length:''}</button></div></form>
   ${X.length>1?`<h2 style="margin-top:18px">Borrar uno solo</h2><div class="list">${X.map(t=>`<div><div class="grow">${esc(t.tipo)} <b class="mono">${esc(t.nombre||'sin ID')}</b>${t.detalle?` <span class="small muted">${esc(t.detalle)}</span>`:''}</div>
     <button type="button" class="btn sm" data-boruno="${esc(t.tid)}">Borrar este</button></div>`).join('')}</div>`:''}`);
@@ -430,7 +433,7 @@ function formEditarLote(tids){
   $$('[data-boruno]').forEach(el=>el.onclick = () => { const t = X.find(x=>x.tid===el.dataset.boruno); borrar([t.tid], `¿Borrar solo ${t.tipo} ${t.nombre||'sin ID'} de ${t.cliente}?`); });
   $('#fed').onsubmit = async e => { e.preventDefault(); const d = Object.fromEntries(new FormData(e.target).entries()); const ids = d.ids.split('\n').map(x=>x.trim());
     let ok = true;
-    for(const [i,t] of X.entries()) ok = await tallerUpdate([t.tid], {cliente:d.cliente.trim(), sede:d.sede.trim()||null, fecha:d.fecha||t.fecha, tipo:d.tipo.trim()||t.tipo, id_equipo:ids[i]||null, detalle:d.detalle.trim()||null}) && ok;
+    for(const [i,t] of X.entries()) ok = await tallerUpdate([t.tid], {cliente:d.cliente.trim(), sede:d.sede.trim()||null, fecha:d.fecha||t.fecha, tipo:d.tipo.trim()||t.tipo, id_equipo:ids[i]||null, detalle:d.detalle.trim()||null, ...(d.taller_rep?{taller_rep:d.taller_rep}:{})}) && ok;
     if(ok){ cerrar(); toast('Guardado'); render(); } };
   $('#bored').onclick = () => borrar(X.map(t=>t.tid), `¿Borrar ${X.length>1?'estos '+X.length+' equipos':'este equipo'} de ${t0.cliente}? No se puede deshacer.`);
 }
@@ -445,7 +448,8 @@ async function accionTaller(ids, acc){
   if(acc==='entregado' && L.some(t=>t.cat==='R')){ trabajo = prompt('¿Qué se le hizo? (queda en el historial del equipo)', L.find(t=>t.cat==='R').detalle||''); if(trabajo===null) return; }
   let quien = null;
   if(acc==='lotiene'){ quien = prompt('¿Quién lo tiene? (Claudio, Maxi, Lucho…)', ''); if(!quien || !quien.trim()) return; }
-  const ok = acc==='retirado' ? await tallerUpdate(ids,{retirar:null, lo_tiene:null, fecha:HOY})
+  const ok = (acc==='retirado'||acc==='retiradoQ') ? (await Promise.all(L.map(t=>tallerUpdate([t.tid],{retirar:null, lo_tiene:null, fecha:t.retirado||HOY, ...(t.cat==='R'?{taller_rep:acc==='retiradoQ'?'Quilmes':'UTN'}:{})})))).every(Boolean)
+    : acc==='aQuilmes' ? await tallerUpdate(ids,{taller_rep:'Quilmes'}) : acc==='aUTN' ? await tallerUpdate(ids,{taller_rep:'UTN'})
     : acc==='lotiene' ? await tallerUpdate(ids,{lo_tiene:quien.trim(), retirado:HOY})
     : acc==='espera' ? await tallerUpdate(ids,{espera:HOY})
     : acc==='reactivar' ? await tallerUpdate(ids,{espera:null})
@@ -458,7 +462,7 @@ async function accionTaller(ids, acc){
     await docSet('equipos_cli', id, sinVacios({...y, cliente:t.cliente, sede:t.sede||y.sede, tipo:t.tipo, id_equipo:idEq, frecuencia:y.frecuencia||0, ultima:HOY, ultimo_trabajo:tr, clase:'Correctivo',
       historial:[...(y.historial||[]), {fecha:HOY, trabajo:tr, clase:'Correctivo', por:S.email||''}]}));
   }
-  if(ok){ if(acc==='entregado') sumarEquiposCli(); toast(acc==='espera'?'Quedó en espera (sin prioridad)':acc==='reactivar'?'Volvió a Para hacer':acc==='lotiene'?'Anotado: lo tiene '+quien.trim():acc==='listo'?'Marcado como listo':acc==='entregado'?'Marcado como entregado':acc==='retirado'?'Pasó al taller':'Listo, vuelve a "Listos"'); render(); }
+  if(ok){ if(acc==='entregado') sumarEquiposCli(); toast(acc==='espera'?'Quedó en espera (sin prioridad)':acc==='reactivar'?'Volvió a Para hacer':acc==='lotiene'?'Anotado: lo tiene '+quien.trim():acc==='listo'?'Marcado como listo':acc==='entregado'?'Marcado como entregado':acc==='retirado'?'Pasó al taller'+(L[0].cat==='R'?' UTN':''):acc==='retiradoQ'?'Pasó al taller Quilmes':acc==='aQuilmes'?'Ahora está en el taller Quilmes':acc==='aUTN'?'Ahora está en el taller UTN':'Listo, vuelve a "Listos"'); render(); }
 }
 
 // Pendientes: todo lo que hay que retirar, entregar o hacer en un cliente y todavía no tiene viaje asignado
@@ -495,14 +499,49 @@ const internos = () => Object.entries(S.internos).map(([id,x])=>{ const d=new Da
 const propios = () => Object.entries(S.prestamos||{}).map(([k,x])=>({k,...x, tipo: x.tipo || (/^M-?\d/i.test(x.id||k) ? 'Termómetro' : /^P-/i.test(k) ? 'Micropipeta' : '')})).filter(x=>x.tipo)
   .sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo)) || String(a.id||a.k).localeCompare(String(b.id||b.k),undefined,{numeric:true}));
 const proxPropio = x => x.proxima_cal || (x.ultima_cal ? masMeses(x.ultima_cal,12) : '');
-const propiosAvisar = () => propios().filter(x=>!proxPropio(x) || proxPropio(x)<=sumarDias(HOY,45));
-const internosAvisar = () => [...internos().filter(x=>x.proxima<=sumarDias(HOY,45)), ...propiosAvisar()];
+const AVISO_CERT = 30;   // se avisa un mes antes del vencimiento
+const propiosAvisar = () => propios().filter(x=>!proxPropio(x) || proxPropio(x)<=sumarDias(HOY,AVISO_CERT));
+const internosAvisar = () => [...internos().filter(x=>x.proxima<=sumarDias(HOY,AVISO_CERT)), ...propiosAvisar()];
+// Certificado adjunto (PDF o foto): se guarda aparte, en "certificados", y se abre cuando se toca
+async function subirCert(file, ref, cert){
+  if(!file || !file.size) return {};
+  if(file.size > 4e6){ alert('El archivo pesa más de 4 MB. Probá con un PDF más liviano o una foto.'); return null; }
+  const data = await new Promise((ok,mal)=>{ const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = mal; r.readAsDataURL(file); });
+  const id = 'c'+Date.now();
+  if(!LOCAL){ const {error} = await sb.from('docs').upsert({coleccion:'certificados', id, data:{ref, nombre:file.name, tipo:file.type, certificado:cert||null, fecha:HOY, por:S.email||null, data}});
+    if(error){ alert('No se pudo subir el certificado: '+error.message); return null; } }
+  return {cert_archivo:id, cert_nombre:file.name, cert_subido:HOY};
+}
+async function verCert(id){
+  const w = window.open('', '_blank');
+  const {data, error} = await sb.from('docs').select('data').eq('coleccion','certificados').eq('id',id).maybeSingle();
+  if(error || !data){ if(w) w.close(); alert('No encontré el archivo del certificado.'); return; }
+  const [cab, b64] = String(data.data.data).split(','), bytes = Uint8Array.from(atob(b64), ch=>ch.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], {type: cab.slice(5).split(';')[0] || 'application/pdf'}));
+  if(w) w.location = url; else location.href = url;
+}
+const campoCert = x => `<label>Certificado (PDF o foto)${x.cert_archivo?` <span style="font-weight:500">· ya hay uno: <a href="#" data-vcert="${esc(x.cert_archivo)}">${esc(x.cert_nombre||'ver')}</a> (si subís otro, queda el nuevo)</span>`:''}<input name="archivo" type="file" accept="application/pdf,image/*"></label>`;
+const histCert = (x, n) => x.cert_archivo && n.cert_archivo && n.cert_archivo!==x.cert_archivo ? [...(x.cert_hist||[]), {archivo:x.cert_archivo, nombre:x.cert_nombre||null, certificado:x.certificado||null, ultima:x.ultima||x.ultima_cal||null}] : (x.cert_hist||null);
+// Cuadro de vencimientos de certificados: equipos internos + termómetros y micropipetas de Mitash
+function vCuadroCert(){
+  const L = [...internos().map(x=>({ed:`data-eint="${esc(x.id)}"`, nom:x.nombre, cod:x.codigo||'', cert:x.certificado||'', ult:x.ultima||'', prox:x.proxima, arch:x.cert_archivo, quien:x.proveedor||''})),
+    ...propios().map(x=>({ed:`data-eprop="${esc(x.k)}"`, nom:x.tipo==='Micropipeta'?'Micropipeta '+[x.marca,x.volumen].filter(Boolean).join(' '):'Termómetro', cod:x.id||x.k, cert:x.certificado||'', ult:x.ultima_cal||'', prox:proxPropio(x), arch:x.cert_archivo, quien:''}))]
+    .sort((a,b)=>(a.prox||'0').localeCompare(b.prox||'0'));
+  if(!L.length) return '';
+  const est = p => !p ? '<span class="tag bad">falta calibrar</span>' : p<HOY ? '<span class="tag bad">vencido</span>' : p<=sumarDias(HOY,AVISO_CERT) ? '<span class="tag warn">vence este mes</span>' : '<span class="tag ok">vigente</span>';
+  return `<style>table.cert{width:100%;border-collapse:collapse;font-size:13px}table.cert th,table.cert td{border-bottom:1px solid var(--line);padding:7px 6px;text-align:left;vertical-align:middle}table.cert th{font-size:12px;color:var(--mut,#667085);font-weight:600}table.cert tr.click:hover{background:var(--soft)}</style>
+  <div class="sec-t">Cuadro de certificados <span class="n">· ${L.length} · ${L.filter(x=>x.prox && x.prox<=sumarDias(HOY,AVISO_CERT)).length} por vencer o vencidos</span></div>
+  <div class="card" style="overflow-x:auto;padding:6px 10px"><table class="cert"><tr><th>Equipo</th><th>Código</th><th>N° cert.</th><th>Última cal.</th><th>Vence</th><th>Estado</th><th>Archivo</th></tr>
+    ${L.map(x=>`<tr class="click" ${x.ed}><td><b>${esc(x.nom)}</b>${x.quien?`<div class="small muted">${esc(x.quien)}</div>`:''}</td><td class="mono">${esc(x.cod)}</td><td class="mono">${esc(x.cert)||'—'}</td><td>${x.ult?fmtA(x.ult):'—'}</td><td>${x.prox?fmtA(x.prox):'—'}</td><td>${est(x.prox)}</td>
+      <td>${x.arch?`<button class="btn sm" data-vcert="${esc(x.arch)}">Ver</button>`:'<span class="small muted">sin archivo</span>'}</td></tr>`).join('')}</table></div>
+  <p class="small muted" style="margin:6px 0 14px">Tocá un equipo para cargar la calibración nueva y adjuntar el certificado. El sistema avisa en la web y por WhatsApp un mes antes de que venza.</p>`;
+}
 function vPropios(){
   const L = propios(); if(!L.length) return '';
   const fila = x => { const p = proxPropio(x);
     return `<div class="click" data-eprop="${esc(x.k)}"><div class="grow"><b class="mono">${esc(x.tipo==='Micropipeta' ? [x.marca,x.volumen].filter(Boolean).join(' ')+' '+(x.id||'') : (x.id||x.k))}</b>
       <div class="small muted">${x.estado==='Disponible'||!x.esta_en||/mitash/i.test(x.esta_en)?'En Mitash':'En '+esc(x.esta_en)+(x.desde?' desde '+fmtA(x.desde):'')}${x.ultima_cal?' · última cal. '+fmtA(x.ultima_cal):''}${x.certificado?' · cert. '+esc(x.certificado):''}</div></div>
-      ${p?`<span class="tag ${p<HOY?'bad':p<=sumarDias(HOY,45)?'warn':'ok'}">${p<HOY?'vencido':'vence'} ${fmtA(p)}</span>`:'<span class="tag bad">falta calibrar</span>'}</div>`; };
+      ${p?`<span class="tag ${p<HOY?'bad':p<=sumarDias(HOY,AVISO_CERT)?'warn':'ok'}">${p<HOY?'vencido':'vence'} ${fmtA(p)}</span>`:'<span class="tag bad">falta calibrar</span>'}</div>`; };
   return `<div class="small muted" style="margin:14px 0 -4px">Tocá uno para cambiar dónde está (prestado a un cliente o de vuelta en Mitash).</div>` + agrupar(L, x=>x.tipo).map(([t,X])=>`<div class="sec-t">${t==='Micropipeta'?'Micropipetas de Mitash':'Termómetros de Mitash'} <span class="n">· ${X.length}</span></div><div class="card"><div class="list">${X.map(fila).join('')}</div></div>`).join('');
 }
 function formPropio(k){
@@ -512,18 +551,22 @@ function formPropio(k){
     <label>¿Dónde está? <span style="font-weight:500">(vacío = en Mitash)</span><input name="esta_en" list="dlcli" autocomplete="off" value="${esc(enM?'':x.esta_en)}" placeholder="Ej.: Maipú · San Fernando"></label>${dlClientes()}
     <label>Desde<input name="desde" type="date" value="${esc(enM?'':(x.desde||HOY))}"></label>
     <div class="two"><label>Última calibración<input name="ultima_cal" type="date" value="${esc(x.ultima_cal||'')}"></label><label>N° de certificado<input name="certificado" value="${esc(x.certificado||'')}"></label></div>
+    ${campoCert(x)}
     <button class="btn pri" style="justify-content:center">Guardar</button></form>`);
+  $$('#fprop [data-vcert]').forEach(el=>el.onclick = e => { e.preventDefault(); verCert(el.dataset.vcert); });
   $('#fprop').onsubmit = async e => { e.preventDefault(); const d = Object.fromEntries(new FormData(e.target).entries()); const donde = d.esta_en.trim(), vuelve = !donde || /^mitash$/i.test(donde);
-    const n = {...x, estado: vuelve ? 'Disponible' : 'Prestado', esta_en: vuelve ? 'Mitash' : donde, desde: vuelve ? null : (d.desde||HOY), ultima_cal: d.ultima_cal||x.ultima_cal||null, certificado: d.certificado.trim()||null, actualizado: HOY, por: S.email||null};
+    const arch = await subirCert(d.archivo, 'prestamos/'+k, d.certificado.trim()); if(arch===null) return;
+    const n = {...x, ...arch, estado: vuelve ? 'Disponible' : 'Prestado', esta_en: vuelve ? 'Mitash' : donde, desde: vuelve ? null : (d.desde||HOY), ultima_cal: d.ultima_cal||x.ultima_cal||null, certificado: d.certificado.trim()||null, actualizado: HOY, por: S.email||null};
+    n.cert_hist = histCert(x, n);
     if(n.ultima_cal !== x.ultima_cal) n.proxima_cal = null;
     if(await docSet('prestamos', k, sinVacios(n))){ cerrar(); toast(vuelve ? nom+' está en Mitash' : nom+' prestado en '+donde); render(); } };
 }
 function vInternos(){
   const L = internos();
-  return `<div class="row" style="margin-bottom:12px"><div class="grow small muted">Patrones y equipos propios de Mitash. Se avisa 45 días antes del vencimiento.</div><button class="btn sm pri" data-nint>+ Equipo interno</button></div>
+  return `<div class="row" style="margin-bottom:12px"><div class="grow small muted">Patrones y equipos propios de Mitash. Se avisa un mes antes del vencimiento.</div><button class="btn sm pri" data-nint>+ Equipo interno</button></div>
   ${L.length ? `<div class="card"><div class="list">${L.map(x=>`<div class="click" data-eint="${esc(x.id)}"><div class="grow"><b>${esc(x.nombre)}</b> <span class="mono small muted">${esc(x.codigo||'')}</span>
       <div class="small muted">Última ${fmtA(x.ultima)}${x.certificado?' · cert. '+esc(x.certificado):''}${x.lugar?' · '+esc(x.lugar):''}</div></div>
-      <span class="tag ${x.proxima<HOY?'bad':x.proxima<=sumarDias(HOY,45)?'warn':'ok'}">${x.proxima<HOY?'vencido':'vence'} ${fmtA(x.proxima)}</span></div>`).join('')}</div></div>`
+      <span class="tag ${x.proxima<HOY?'bad':x.proxima<=sumarDias(HOY,AVISO_CERT)?'warn':'ok'}">${x.proxima<HOY?'vencido':'vence'} ${fmtA(x.proxima)}</span></div>`).join('')}</div></div>`
     : '<div class="card flat empty">Todavía no hay equipos internos cargados.</div>'}`;
 }
 function formInterno(id){
@@ -535,9 +578,13 @@ function formInterno(id){
     <div class="two"><label>Última calibración<input name="ultima" type="date" required value="${esc(x.ultima||'')}"></label><label>Cada (meses)<input name="frecuencia" type="number" min="1" max="60" value="${esc(x.frecuencia||12)}"></label></div>
     <div class="two"><label>Quién lo calibra<input name="proveedor" value="${esc(x.proveedor||'')}" placeholder="Ej.: INTI"></label><label>Dónde está<input name="lugar" value="${esc(x.lugar||'')}"></label></div>
     <label>Notas<input name="notas" value="${esc(x.notas||'')}"></label>
+    ${campoCert(x)}
     <div class="row"><button class="btn pri" style="flex:1;justify-content:center">Guardar</button>${id?'<button type="button" class="btn" id="borint">Borrar</button>':''}</div></form>`);
-  $('#fint').onsubmit = async e => { e.preventDefault(); const d = sinVacios(Object.fromEntries(new FormData(e.target).entries()));
-    if(await docSet('internos', id||'i'+Date.now(), d)){ cerrar(); toast('Guardado'); render(); } };
+  $$('#fint [data-vcert]').forEach(el=>el.onclick = e => { e.preventDefault(); verCert(el.dataset.vcert); });
+  $('#fint').onsubmit = async e => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target).entries()), archivo = f.archivo; delete f.archivo;
+    const nid = id||'i'+Date.now(), arch = await subirCert(archivo, 'internos/'+nid, f.certificado); if(arch===null) return;
+    const d = sinVacios({...(id?{cert_archivo:x.cert_archivo, cert_nombre:x.cert_nombre, cert_subido:x.cert_subido}:{}), ...f, ...arch}); d.cert_hist = histCert(x, d); if(!d.cert_hist) delete d.cert_hist;
+    if(await docSet('internos', nid, d)){ cerrar(); toast(arch.cert_archivo?'Guardado con el certificado':'Guardado'); render(); } };
   if(id) $('#borint').onclick = async () => { if(confirm('¿Borrar este equipo interno?')){ await docDel('internos', id); cerrar(); render(); } };
 }
 // Contactos de clientes (para los avisos de próxima calibración; el bot también los usa)
@@ -678,12 +725,12 @@ function vPagos(){
     return `<div style="display:block"><div class="row"><div class="grow"><b>${esc(x.cliente)}</b>${x.sede?` <span class="muted">· ${esc(x.sede)}</span>`:''}
       <div class="small muted">${tagCat(x.cat, G.length)} listo ${fmtA(x.fecha)} · ${plata(G.length*x.monto)}${x.hizo.length>1?" a cada uno":""}</div>
       <div class="small muted mono" style="margin-top:3px">${G.map(y=>esc(y.id||y.inf||'sin ID')).join(' · ')}</div></div></div>
-      <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px">${PERSONAS.map(p=>{ const en = G.some(y=>y.hizo.includes(p)), pago = G.every(y=>!y.hizo.includes(p)||y.pago[p]);
-        return `<button class="btn sm ${!en?'ghost':pago?'ok':''}" data-cob="${esc(G.map(y=>y.k).join(','))}" data-p="${p}" title="Tocá para cambiar">${p}: ${pago?'pagado':'pendiente'}</button>`; }).join('')}</div></div>`; }).join('')}</div></div>`
+      <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:6px">${(()=>{ const pago = G.every(y=>PERSONAS.every(p=>y.pago[p])), mitad = !pago && G.some(y=>PERSONAS.some(p=>y.pago[p]));
+        return `<button class="btn sm ${pago?'ok':''}" data-cob="${esc(G.map(y=>y.k).join(','))}" data-p="ambos" title="Tocá para cambiar">${PERSONAS.join(' y ')}: ${pago?'pagado':mitad?'pagado a uno solo (tocá para emparejar)':'pendiente'}</button>`; })()}</div></div>`; }).join('')}</div></div>`
     : `<div class="card flat empty">${ver==='pend'?'No hay nada pendiente de pago.':'Nada para mostrar.'}</div>`}
   ${vCupos()}
   ${vAnio()}
-  <p class="small muted">Tocá el nombre en cada fila para pasarla de pendiente a pagado (o al revés). A cada uno le corresponde $1.500 por micropipeta y $3.000 por termómetro.</p>`;
+  <p class="small muted">Tocá el botón de cada fila para pasarla de pendiente a pagado (o al revés), a los dos juntos. A cada uno le corresponde $1.500 por micropipeta y $3.000 por termómetro.</p>`;
 }
 // Cupos anuales cotizados (Rossi: 80 micropipetas en 2026; 32 hechas hasta el 05/11; desde ahí cuenta lo listo o entregado, por sector)
 const CUPOS = [{cliente:'Rossi', tipo:'M', anio:'2026', cupo:80, base:32, desde:'2026-11-05'}];
@@ -709,9 +756,9 @@ function vAnio(){
 }
 async function ciclarCobro(keys, p){
   const L = cobrables().filter(x=>keys.includes(x.k)); if(!L.length) return;
-  const pagar = !L[0].pago[p];
+  const P = p==='ambos' ? PERSONAS : [p], pagar = !L.every(x=>P.every(q=>x.pago[q]));
   for(const x of L){ const c = {...(S.cobros[x.k]||{}), pago:{...x.pago}}; delete c.hizo;
-    if(pagar) c.pago[p] = HOY; else delete c.pago[p];
+    P.forEach(q=>{ if(pagar) c.pago[q] = c.pago[q] || HOY; else delete c.pago[q]; });
     if(!await docSet('cobros', x.k, c)) return; }
   S.r++; render();
 }
@@ -735,7 +782,8 @@ function vControl(){
   ${tabla('Para retirar (en el cliente)', T.filter(t=>t.estado==='retirar'))}
   ${tabla('Retirado, todavía no llegó al taller', T.filter(t=>t.estado==='transito'))}
   ${tabla('En el taller · calibraciones', T.filter(t=>t.estado==='hacer' && esCalib(t)))}
-  ${tabla('En el taller · reparaciones', T.filter(t=>t.estado==='hacer' && !esCalib(t)))}
+  ${tabla('Reparaciones · Taller UTN', T.filter(t=>t.estado==='hacer' && !esCalib(t) && tallerDe(t)==='UTN'))}
+  ${tabla('Reparaciones · Taller Quilmes', T.filter(t=>t.estado==='hacer' && !esCalib(t) && tallerDe(t)==='Quilmes'))}
   ${tabla('En el taller · en espera (sin prioridad)', T.filter(t=>t.estado==='espera'))}
   ${tabla('Listo para entregar (o en camino)', T.filter(t=>t.estado==='listo'))}
   ${trabajosLugar().length?`<h2 class="ctl">Trabajos a realizar en clientes <span class="muted">· ${trabajosLugar().length}</span></h2><table class="ctl"><tr><th>Cliente</th><th>Sede</th><th>Trabajo</th><th>Desde</th><th>¿Sigue?</th><th>Ya se hizo</th></tr>
@@ -744,7 +792,7 @@ function vControl(){
     ${P.map(x=>`<tr><td class="mono">${esc(x.tipo==='Micropipeta'?[x.marca,x.volumen,x.id].filter(Boolean).join(' '):(x.id||x.k))}</td><td>${esc(x.estado==='Disponible'||!x.esta_en?'Mitash':x.esta_en)}</td><td>${x.desde?fmt(x.desde):''}</td><td>${proxPropio(x)?fmtA(proxPropio(x)):'falta calibrar'}</td><td class="ck">☐</td><td style="min-width:140px"></td></tr>`).join('')}</table>`:''}
   <p class="small muted">Mitash · control impreso el ${fmtA(HOY)}</p>`;
 }
-function vInternosPag(){ return `<h1>Equipos internos</h1><p class="sub">Patrones, termómetros y micropipetas de Mitash, con su próxima calibración (una vez por año desde la última).</p>${vInternos()}${vPropios()}`; }
+function vInternosPag(){ return `<h1>Equipos internos</h1><p class="sub">Patrones, termómetros y micropipetas de Mitash, con su próxima calibración y su certificado. Aviso un mes antes del vencimiento.</p>${vCuadroCert()}${vInternos()}${vPropios()}`; }
 
 function vVencimientos(){
   const meses = [MES, sumarMeses(MES,1), sumarMeses(MES,2)];
@@ -1146,6 +1194,7 @@ function bind(){
   $$('[data-nint]').forEach(el=>el.onclick = () => formInterno(null));
   $$('[data-eint]').forEach(el=>el.onclick = () => formInterno(el.dataset.eint));
   $$('[data-eprop]').forEach(el=>el.onclick = () => formPropio(el.dataset.eprop));
+  $$('[data-vcert]').forEach(el=>el.onclick = e => { e.preventDefault(); e.stopPropagation(); verCert(el.dataset.vcert); });
   $$('[data-ncon]').forEach(el=>el.onclick = () => formContacto(null));
   $$('[data-ncli]').forEach(el=>el.onclick = () => formCliente(null));
   $$('[data-ncli-nom]').forEach(el=>el.onclick = () => formCliente(null, el.dataset.ncliNom));
